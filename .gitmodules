@@ -1,0 +1,3 @@
+[submodule "CaseTimeSeries"]
+	path = CaseTimeSeries
+	url = https://github.com/gasparrini/CaseTimeSeries.git
