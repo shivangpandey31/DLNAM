@@ -1,8 +1,8 @@
 # train.py
 
 import math
-
 import platform
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,8 +19,7 @@ class Trainer:
         self.device = model_kwargs.get('device', torch.device("cpu"))
         self.num_models = model_kwargs.get('num_models', 3)
         self.exposure_lags = model_kwargs.get('exposure_dims', [30])
-        self.output_penalty_lambda = model_kwargs.get('output_penalty', 1e-4)
-
+        self.output_penalty_lambda = model_kwargs.get('output_penalty', 0)
         self.use_compile = model_kwargs.get('use_compile', False)
 
         self.ensemble = [
@@ -28,63 +27,44 @@ class Trainer:
             for _ in range(self.num_models)
         ]
 
-        # torch.compile() traces the model's computation graph and emits
-        # optimised machine code for the target hardware.  Operations such
-        # as linear + activation are fused into single GPU kernels, reducing
-        # memory bandwidth pressure.  The first forward pass is slow (compile
-        # happens then); all subsequent passes use the compiled version.
-        #
-        # Only applied when use_compile=True AND PyTorch >= 2.0 is available.
-        # Disabled automatically on Windows due to known compiler limitations.
         if self.use_compile and hasattr(torch, 'compile'):
             if platform.system() == 'Windows':
                 print("  torch.compile() skipped — not supported on Windows.")
             else:
-                self.ensemble = [
-                    torch.compile(m) for m in self.ensemble
-                ]
+                self.ensemble = [torch.compile(m) for m in self.ensemble]
                 print(f"  torch.compile() applied to {self.num_models} models.")
 
     def train(self, X_exposures, X_c, X_time, Y,
               epochs=1000,
               loss_type='Poisson',
               batch_fraction=None,
-              lr_schedule=True,
-              optim_kwargs=None):
+              lr_schedule='cosine',
+              lr_min=1e-6,
+              lr_plateau_factor=0.5,
+              lr_plateau_patience=100,
+              optim_kwargs=None,
+              x_encodings=None,
+              processor=None):
         """
-        batch_fraction : float in (0, 1] or None
-            None  -> full-batch gradient descent (default).
-                     The entire dataset is used per gradient step.
+        processor : DLNAMDataProcessor (optional)
+            When provided, its scaling_types dict is used to automatically
+            construct scaling-aware penalty grids.  The grids span the same
+            range as the actual training inputs:
+              exposure -> processor.scaling_types['exposure']
+              conf     -> processor.scaling_types['conf']
+              trend    -> 'minmax' (time is always [0,1])
+              lag      -> 'minmax' (lag grid is always [0,1])
+            If processor is None and output_penalty > 0, the grids default
+            to 'minmax' for all inputs.
 
-            float -> minibatch training. Batch size is computed as
-                     round(batch_fraction * n_obs), scaling automatically
-                     when you move to larger datasets.
-
-                     Recommended values on Chicago (~4600 obs):
-                       0.20 -> ~920 obs  (~5  steps/epoch)
-                       0.10 -> ~460 obs  (~10 steps/epoch)
-                       0.05 -> ~230 obs  (~20 steps/epoch)
-
-                     Portable across dataset sizes: 0.10 always means
-                     10 percent of whatever dataset you pass in.
+        x_encodings : list of LongTensors, one per categorical encoding,
+                      in the same order as encoding_configs. Or None.
         """
         if optim_kwargs is None:
-            optim_kwargs = {'lr': 0.0003, 'weight_decay': 1e-3}
+            optim_kwargs = {'lr': 0.0003, 'weight_decay': 0}
 
-        # ------------------------------------------------------------------
-        # Data placement:
-        #   Full-batch  -> move everything to device once, reuse each epoch.
-        #   Minibatch   -> keep on CPU so DataLoader can pin memory.
-        #                  Moving to GPU before pinning causes:
-        #                  'cannot pin torch.cuda.FloatTensor'
-        #                  Each batch is moved to device inside the loop.
-        # ------------------------------------------------------------------
         n_obs = Y.shape[0]
 
-        # Resolve batch_fraction to a concrete batch size.
-        # batch_fraction=None  -> full-batch
-        # batch_fraction=0.10  -> 10 percent of dataset per batch
-        # Clamped to [1, n_obs] to guard against extreme values.
         if batch_fraction is not None:
             if not (0.0 < batch_fraction <= 1.0):
                 raise ValueError(
@@ -106,29 +86,21 @@ class Trainer:
             X_time      = X_time.to(self.device)
             Y           = Y.to(self.device)
             X_exposures = [x.to(self.device) for x in X_exposures]
+            if x_encodings is not None:
+                x_encodings = [e.to(self.device) for e in x_encodings]
 
-        # ------------------------------------------------------------------
-        # Minibatch setup — only runs when use_minibatch is True.
-        # Completely skipped in full-batch mode (zero overhead).
-        #
-        # X_exposures is concatenated along dim=1 for DataLoader and
-        # re-split by original lag counts inside each batch iteration.
-        # ------------------------------------------------------------------
         loader     = None
         lag_counts = [x.shape[1] for x in X_exposures]
 
         if use_minibatch:
-            X_exp_concat = torch.cat(X_exposures, dim=1)  # (N, total_lag_cols)
-            dataset = TensorDataset(X_exp_concat, X_c, X_time, Y)
-            # num_workers > 0 spawns background processes that prepare the
-            # next batch while the GPU processes the current one, eliminating
-            # the data-loading bottleneck on large datasets.
-            # pin_memory=True stores batches in page-locked memory for faster
-            # CPU -> GPU transfers.
-            # On Windows multiprocessing requires a __main__ guard so we
-            # fall back to 0 workers automatically.
+            X_exp_concat = torch.cat(X_exposures, dim=1)
+            tensors = [X_exp_concat, X_c, X_time, Y]
+            if x_encodings is not None:
+                for enc in x_encodings:
+                    tensors.append(enc.unsqueeze(1).float())
+            dataset      = TensorDataset(*tensors)
             safe_workers = 0 if platform.system() == 'Windows' else 4
-            loader  = DataLoader(
+            loader = DataLoader(
                 dataset,
                 batch_size=batch_size,
                 shuffle=True,
@@ -138,7 +110,7 @@ class Trainer:
             )
 
         # ------------------------------------------------------------------
-        # Bias initialisation: log(target_mean)
+        # Bias initialisation
         # ------------------------------------------------------------------
         target_mean  = Y.mean().item()
         initial_bias = math.log(max(target_mean, 1e-8))
@@ -149,46 +121,69 @@ class Trainer:
         criterion = PoissonLoss()
 
         # ------------------------------------------------------------------
-        # Precompute output-penalty grid once — does not depend on weights
+        # Precompute penalty grids — automatically scaled from processor
         # ------------------------------------------------------------------
-        penalty_grid = None
+        def _grid_range(scale):
+            return (-3.0, 3.0) if scale == 'zscore' else (0.0, 1.0)
+
+        def _make_grid_1d(scale, n=20):
+            lo, hi = _grid_range(scale)
+            return torch.linspace(lo, hi, n, device=self.device).unsqueeze(1)
+
+        def _make_grid_2d(scale_v, scale_l, n=20):
+            lo_v, hi_v = _grid_range(scale_v)
+            lo_l, hi_l = _grid_range(scale_l)
+            v = torch.linspace(lo_v, hi_v, n, device=self.device)
+            l = torch.linspace(lo_l, hi_l, n, device=self.device)
+            v_g, l_g = torch.meshgrid(v, l, indexing='ij')
+            return torch.stack([v_g.flatten(), l_g.flatten()], dim=1)
+
+        penalty_grids = None
         if self.output_penalty_lambda > 0:
-            grid_size    = 20
-            v            = torch.linspace(0.0, 1.0, grid_size, device=self.device)
-            l            = torch.linspace(0.0, 1.0, grid_size, device=self.device)
-            v_g, l_g     = torch.meshgrid(v, l, indexing='ij')
-            penalty_grid = torch.stack(
-                [v_g.flatten(), l_g.flatten()], dim=1
-            )  # (grid_size^2, 2)
+            # Read scaling types from processor if available; default 'minmax'
+            if processor is not None and hasattr(processor, 'scaling_types'):
+                st = processor.scaling_types
+            else:
+                st = {}
+            sc_exp   = st.get('exposure', 'minmax')
+            sc_lag   = st.get('lag',      'minmax')  # always minmax
+            sc_conf  = st.get('conf',     'zscore')
+            sc_trend = st.get('trend',    'minmax')  # always minmax
+
+            penalty_grids = {
+                'surface': _make_grid_2d(sc_exp, sc_lag),
+                'conf':    _make_grid_1d(sc_conf),
+                'trend':   _make_grid_1d(sc_trend),
+            }
+            print(
+                f"  Penalty grids: exposure={sc_exp}, lag={sc_lag}, "
+                f"conf={sc_conf}, trend={sc_trend}"
+            )
 
         # ------------------------------------------------------------------
-        # Outer loop: one independent training run per ensemble member
+        # Outer loop
         # ------------------------------------------------------------------
+        self.loss_history = []   # reset before new training run
+
         for i, model in enumerate(self.ensemble):
-            print(f"\n--- Training Ensemble {i + 1}/{self.num_models} ---")
+            label  = f" Training Ensemble {i + 1}/{self.num_models} "
+            dashes = 60 - len(label)
+            print(f"\n{'-' * (dashes // 2)}{label}{'-' * (dashes - dashes // 2)}")
             optimizer = optim.AdamW(model.parameters(), **optim_kwargs)
+            model_loss_history = []   # (epoch, full_dataset_loss) pairs
 
-            # Cosine annealing scheduler — decays lr from initial value to
-            # lr_min over the full training run.  T_max is set to the total
-            # number of gradient steps (not epochs) so the decay is smooth
-            # regardless of whether full-batch or minibatch is used.
-            #
-            # With full-batch:   1 step per epoch  -> T_max = epochs
-            # With minibatch:    k steps per epoch -> T_max = epochs * k
-            #   where k = ceil(n_obs / batch_size)
-            #
-            # This ensures the lr reaches its minimum at the final update
-            # in both cases, giving a consistent decay shape.
-            if lr_schedule:
-                if use_minibatch:
-                    steps_per_epoch = math.ceil(n_obs / batch_size)
-                else:
-                    steps_per_epoch = 1
+            if lr_schedule == 'cosine':
+                steps_per_epoch = math.ceil(n_obs / batch_size) if use_minibatch else 1
                 t_max = max(epochs * steps_per_epoch, 1)
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                    optimizer,
-                    T_max=t_max,
-                    eta_min=1e-6,
+                    optimizer, T_max=t_max, eta_min=lr_min,
+                )
+            elif lr_schedule == 'plateau':
+                scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    optimizer, mode='min',
+                    factor=lr_plateau_factor,
+                    patience=lr_plateau_patience,
+                    min_lr=lr_min,
                 )
             else:
                 scheduler = None
@@ -196,17 +191,16 @@ class Trainer:
             for epoch in range(epochs + 1):
 
                 # ----------------------------------------------------------
-                # FULL-BATCH path
+                # FULL-BATCH
                 # ----------------------------------------------------------
                 if not use_minibatch:
                     model.train()
                     optimizer.zero_grad()
 
-                    mu           = model(X_exposures, X_c, X_time)
+                    mu           = model(X_exposures, X_c, X_time, x_encodings)
                     poisson_loss = criterion(mu, Y)
-                    l2_penalty   = self._penalty(model, penalty_grid)
-                    loss         = (poisson_loss
-                                    + self.output_penalty_lambda * l2_penalty)
+                    l2_penalty   = self._penalty(model, penalty_grids)
+                    loss         = poisson_loss + self.output_penalty_lambda * l2_penalty
 
                     if torch.isnan(loss):
                         print(f"  NaN loss at epoch {epoch} – stopping early.")
@@ -214,13 +208,13 @@ class Trainer:
 
                     loss.backward()
                     optimizer.step()
-                    if scheduler is not None:
+                    if scheduler is not None and lr_schedule == 'cosine':
                         scheduler.step()
 
                     loss_for_print = loss.item()
 
                 # ----------------------------------------------------------
-                # MINIBATCH path
+                # MINIBATCH
                 # ----------------------------------------------------------
                 else:
                     model.train()
@@ -228,35 +222,37 @@ class Trainer:
                     n_batches  = 0
                     nan_hit    = False
 
-                    for X_exp_b, X_c_b, X_time_b, Y_b in loader:
-                        # Transfer batch from CPU to GPU.
-                        # non_blocking=True overlaps transfer with GPU compute.
+                    for batch in loader:
+                        n_enc = len(x_encodings) if x_encodings is not None else 0
+                        X_exp_b, X_c_b, X_time_b, Y_b = batch[:4]
+                        enc_bs = [
+                            batch[4 + j].squeeze(1).long().to(
+                                self.device, non_blocking=True
+                            )
+                            for j in range(n_enc)
+                        ] if n_enc > 0 else None
+
                         X_exp_b  = X_exp_b.to(self.device, non_blocking=True)
                         X_c_b    = X_c_b.to(self.device, non_blocking=True)
                         X_time_b = X_time_b.to(self.device, non_blocking=True)
                         Y_b      = Y_b.to(self.device, non_blocking=True)
-                        X_exp_split = list(
-                            torch.split(X_exp_b, lag_counts, dim=1)
-                        )
+                        X_exp_split = list(torch.split(X_exp_b, lag_counts, dim=1))
 
                         optimizer.zero_grad()
 
-                        mu_b         = model(X_exp_split, X_c_b, X_time_b)
+                        mu_b         = model(X_exp_split, X_c_b, X_time_b, enc_bs)
                         poisson_loss = criterion(mu_b, Y_b)
-                        l2_penalty   = self._penalty(model, penalty_grid)
-                        loss         = (poisson_loss
-                                        + self.output_penalty_lambda * l2_penalty)
+                        l2_penalty   = self._penalty(model, penalty_grids)
+                        loss         = poisson_loss + self.output_penalty_lambda * l2_penalty
 
                         if torch.isnan(loss):
-                            print(
-                                f"  NaN loss at epoch {epoch} – stopping early."
-                            )
+                            print(f"  NaN loss at epoch {epoch} – stopping early.")
                             nan_hit = True
                             break
 
                         loss.backward()
                         optimizer.step()
-                        if scheduler is not None:
+                        if scheduler is not None and lr_schedule == 'cosine':
                             scheduler.step()
 
                         epoch_loss += loss.item()
@@ -267,44 +263,86 @@ class Trainer:
 
                     loss_for_print = epoch_loss / max(n_batches, 1)
 
+                # Record every epoch for training curve plot
+                model_loss_history.append((epoch, loss_for_print))
+
                 # ----------------------------------------------------------
-                # Periodic diagnostics — always on the full dataset
+                # Plateau — step every epoch on full-dataset loss
+                # ----------------------------------------------------------
+                if lr_schedule == 'plateau' and scheduler is not None:
+                    model.eval()
+                    if use_minibatch:
+                        X_exp_d = [x.to(self.device) for x in X_exposures]
+                        X_c_d, X_t_d = X_c.to(self.device), X_time.to(self.device)
+                        Y_d   = Y.to(self.device)
+                        enc_d = [e.to(self.device) for e in x_encodings] if x_encodings is not None else None
+                    else:
+                        X_exp_d, X_c_d, X_t_d, Y_d = (
+                            X_exposures, X_c, X_time, Y
+                        )
+                        enc_d = x_encodings
+                    with torch.no_grad():
+                        mu_p = model(X_exp_d, X_c_d, X_t_d, enc_d)
+                        fl_p = criterion(mu_p, Y_d).item()
+                    scheduler.step(fl_p)
+
+                # ----------------------------------------------------------
+                # Diagnostics
                 # ----------------------------------------------------------
                 if epoch % max(epochs // 10, 1) == 0:
                     model.eval()
-                    # For diagnostics in minibatch mode, move full data to
-                    # device temporarily — it lives on CPU otherwise.
                     if use_minibatch:
-                        X_exp_diag = [x.to(self.device) for x in X_exposures]
-                        X_c_diag   = X_c.to(self.device)
-                        X_time_diag = X_time.to(self.device)
-                        Y_diag     = Y.to(self.device)
+                        X_exp_d = [x.to(self.device) for x in X_exposures]
+                        X_c_d, X_t_d = X_c.to(self.device), X_time.to(self.device)
+                        Y_d   = Y.to(self.device)
+                        enc_d = [e.to(self.device) for e in x_encodings] if x_encodings is not None else None
                     else:
-                        X_exp_diag  = X_exposures
-                        X_c_diag    = X_c
-                        X_time_diag = X_time
-                        Y_diag      = Y
+                        X_exp_d, X_c_d, X_t_d, Y_d = (
+                            X_exposures, X_c, X_time, Y
+                        )
+                        enc_d = x_encodings
                     with torch.no_grad():
-                        mu_e = model(X_exp_diag, X_c_diag, X_time_diag)
-                        phi  = torch.mean(
-                            ((Y_diag - mu_e) ** 2) / (mu_e + 1e-8)
+                        mu_e      = model(X_exp_d, X_c_d, X_t_d, enc_d)
+                        phi       = torch.mean(
+                            ((Y_d - mu_e) ** 2) / (mu_e + 1e-8)
                         ).item()
-                    # Also report current lr so decay is visible in output
+                        full_loss = criterion(mu_e, Y_d).item()
+
                     current_lr = optimizer.param_groups[0]['lr']
                     print(
-                        f"  Epoch {epoch:4d} | Loss: {loss_for_print:.4f}"
-                        f" | Phi: {phi:.3f}"
+                        f"  Epoch {epoch:4d} | Loss: {full_loss:9.4f}"
+                        f" | Phi: {phi:7.3f}"
                         f" | LR: {current_lr:.2e}"
                     )
 
+            self.loss_history.append(model_loss_history)
+
     # ------------------------------------------------------------------
-    # Output penalty helper — shared by both training paths
+    # Output penalty — all network types with scaling-aware grids
     # ------------------------------------------------------------------
-    def _penalty(self, model, penalty_grid):
-        if self.output_penalty_lambda == 0 or penalty_grid is None:
+    def _penalty(self, model, penalty_grids):
+        """
+        Evaluates L2 output penalty for every network component:
+          surface subnets    — mean squared output over 2D grid (exposure × lag)
+          confounder subnets — mean squared output over 1D grid (confounder value)
+          trend subnets      — mean squared output over 1D grid (normalised time)
+          encodings          — mean squared embedding weights directly
+                               (no grid needed: weights are the outputs)
+        """
+        if self.output_penalty_lambda == 0 or penalty_grids is None:
             return 0.0
+
         l2 = 0.0
         for subnets in model.surface_subnets:
             for s_net in subnets:
-                l2 = l2 + torch.mean(s_net(penalty_grid) ** 2)
+                l2 = l2 + torch.mean(s_net(penalty_grids['surface']) ** 2)
+        for subnets in model.conf_subnets:
+            for s_net in subnets:
+                l2 = l2 + torch.mean(s_net(penalty_grids['conf']) ** 2)
+        for s_net in model.trend_subnets:
+            l2 = l2 + torch.mean(s_net(penalty_grids['trend']) ** 2)
+        # Encoding: penalise all parameters in the encoding network
+        for enc in model.encodings:
+            for p in enc.net.parameters():
+                l2 = l2 + torch.mean(p ** 2)
         return l2
