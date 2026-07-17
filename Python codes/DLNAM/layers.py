@@ -38,6 +38,19 @@ def init_mix(spec):
     return t
 
 
+def apply_subnet_dropout(weights: torch.Tensor, p: float, training: bool) -> torch.Tensor:
+    """Apply inverted dropout to subnet mixing weights during training."""
+    p = float(p)
+    if not training or p <= 0.0 or weights.numel() <= 1:
+        return weights
+    keep = 1.0 - p
+    mask = (torch.rand_like(weights) < keep).to(weights.dtype)
+    if torch.count_nonzero(mask) == 0:
+        idx = torch.randint(mask.numel(), (), device=mask.device)
+        mask[idx] = 1.0
+    return weights * mask / keep
+
+
 def _init_per_dim_weight(in_features, out_features, means, std):
     """Weight (in_features, out_features); row i (input dim i) initialised from
     N(means[i], std). `means` may be a scalar or a length-in_features sequence,
@@ -82,10 +95,8 @@ class ExULayerSharedBias(nn.Module):
     """Unified multi-dim ExU with one bias per INPUT DIMENSION, shared across
     units:  h_o = sum_i exp(W_io) * (x_i - b_i),  b in R^{k0}.
 
-    This is the paper's first alternative h = sigma(e^W (x - b)). It does NOT
-    reduce to the scalar ExU at k0=1 (single shared bias rather than per-unit),
-    so it sacrifices per-unit localisation — useful mainly as the ablation's
-    negative control.
+    This encoder does not reduce to the scalar ExU at k0=1 because the bias is
+    shared across units rather than local to each unit.
     """
 
     def __init__(self, in_features: int, out_features: int,

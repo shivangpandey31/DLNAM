@@ -1,14 +1,11 @@
 """
-evaluate.py — predictive performance metrics for a trained ensemble.
+evaluate.py - predictive performance metrics for a trained ensemble.
 
-General over distribution (poisson | bernoulli) via the model's link. Computes
-goodness-of-fit and predictive-interval coverage on the OUTCOME scale.
-
-Note on the two kinds of coverage: what this reports is *predictive* coverage —
-does the observed y fall inside a predictive band for the count/probability.
-That is distinct from *estimator* coverage (does a CI for an effect curve contain
-the true curve), which is what the Monte-Carlo study (Phase 6) measures. They
-answer different questions and are deliberately kept separate.
+The evaluator computes in-sample goodness-of-fit and prediction diagnostics on
+the outcome scale. Predictive coverage is not estimator coverage: it asks
+whether observed outcomes fall inside predictive intervals, whereas the
+Monte-Carlo study checks whether effect-curve confidence intervals contain the
+true curve.
 """
 
 from __future__ import annotations
@@ -16,23 +13,21 @@ from __future__ import annotations
 import numpy as np
 import torch
 from scipy import stats
-from sklearn.metrics import (mean_squared_error, mean_absolute_error,
-                             roc_auc_score)
+from sklearn.metrics import mean_absolute_error, mean_squared_error, roc_auc_score
 
 
 def predict_ensemble(ensemble, inputs, chunk=4096):
-    """Per-member predictions (M, N) and their mean (N,). Chunked to bound
-    forward-pass activation memory on large N."""
+    """Return per-member predictions and their ensemble mean."""
     device = next(ensemble[0].parameters()).device
     inputs = {k: v.to(device) for k, v in inputs.items()}
-    N = next(iter(inputs.values())).shape[0]
+    n = next(iter(inputs.values())).shape[0]
     preds = []
     with torch.no_grad():
         for m in ensemble:
             m.eval()
             parts = []
-            for s in range(0, N, chunk):
-                sl = slice(s, min(s + chunk, N))
+            for s in range(0, n, chunk):
+                sl = slice(s, min(s + chunk, n))
                 bi = {k: v[sl] for k, v in inputs.items()}
                 parts.append(m(bi).cpu())
             preds.append(torch.cat(parts).numpy().ravel())
@@ -54,7 +49,6 @@ class PerformanceEvaluator:
         z = stats.norm.ppf(1 - self.alpha / 2)
         dist = self.distribution
 
-        # deviance + null deviance + McFadden R^2
         if dist == "poisson":
             ylog = np.where(y_true > 0, y_true * np.log(y_true / muc), 0.0)
             dev = 2 * np.sum(ylog - (y_true - muc))
@@ -66,7 +60,9 @@ class PerformanceEvaluator:
             mb = np.clip(mu, 1e-7, 1 - 1e-7)
             dev = 2 * np.sum(-y_true * np.log(mb) - (1 - y_true) * np.log(1 - mb))
             p0 = np.clip(y_true.mean(), 1e-7, 1 - 1e-7)
-            null_dev = 2 * np.sum(-y_true * np.log(p0) - (1 - y_true) * np.log(1 - p0))
+            null_dev = 2 * np.sum(
+                -y_true * np.log(p0) - (1 - y_true) * np.log(1 - p0)
+            )
             phi = 1.0
 
         out = {
@@ -83,7 +79,6 @@ class PerformanceEvaluator:
             "Nominal_Coverage": 1 - self.alpha,
         }
 
-        # predictive Wald interval on the outcome scale
         if dist == "poisson":
             se = np.sqrt(phi * muc)
         else:
@@ -99,18 +94,16 @@ class PerformanceEvaluator:
                 out["AUC"] = float("nan")
         return out
 
-    def report(self, m: dict) -> None:
-        sep = "=" * 56
-        nom = int(round(m["Nominal_Coverage"] * 100))
-        print(f"\n{sep}\n  PERFORMANCE  [{m['distribution'].upper()}]\n{sep}")
-        print(f"  RMSE         {m['RMSE']:.4f}   (null {m['Null_RMSE']:.4f})")
-        print(f"  MAE          {m['MAE']:.4f}")
-        print(f"  Deviance     {m['Deviance']:.2f}  (null {m['Null_Deviance']:.2f})")
-        print(f"  McFadden R2  {m['McFadden_R2']:.4f}")
+    def report(self, m: dict, *, detailed: bool = False) -> None:
+        print("Fit diagnostics")
+        print(f"  deviance      {m['Deviance']:.1f}  (null {m['Null_Deviance']:.1f})")
+        print(f"  pseudo-R2     {m['McFadden_R2']:.3f}")
         if m["distribution"] == "poisson":
-            print(f"  Phi          {m['Phi']:.4f}")
+            print(f"  dispersion    {m['Phi']:.3f}")
         else:
-            print(f"  AUC          {m.get('AUC', float('nan')):.4f}")
-            print(f"  Brier        {m.get('Brier', float('nan')):.4f}")
-        print(f"  {nom}% predictive coverage: {m['Predictive_Coverage']*100:.2f}%")
-        print(f"{sep}\n")
+            print(f"  AUC           {m.get('AUC', float('nan')):.3f}")
+            print(f"  Brier         {m.get('Brier', float('nan')):.3f}")
+        print(f"  RMSE / MAE    {m['RMSE']:.3f} / {m['MAE']:.3f}")
+        if detailed:
+            nom = int(round(m["Nominal_Coverage"] * 100))
+            print(f"  pred. cover   {m['Predictive_Coverage'] * 100:.1f}% ({nom}% nominal)")

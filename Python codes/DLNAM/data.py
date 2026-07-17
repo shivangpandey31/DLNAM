@@ -17,8 +17,7 @@ Memory notes:
     with a single float32 contiguous materialisation — no double copy, no
     float64 intermediate.
   * the dominant training-time memory cost is forward-pass activations, not this
-    storage; control it with TrainConfig.batch_fraction (minibatch) and, if
-    needed, Trainer.fit(vectorize_ensemble=False).
+    storage; control it with TrainConfig.batch_fraction (minibatch).
 """
 
 from __future__ import annotations

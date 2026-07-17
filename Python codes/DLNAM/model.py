@@ -50,11 +50,20 @@ class DLNAM(nn.Module):
             terms[name] = builder(name, spec)
         return cls(terms, make_link(cfg.link))
 
-    def forward(self, inputs: dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, inputs: dict[str, torch.Tensor], *,
+                return_penalty: bool = False):
         eta = self.intercept
+        penalty = eta.new_zeros(())
         for name, term in self.terms.items():
-            eta = eta + term(inputs[name])
-        return self.link.inverse(eta)
+            contribution = term(inputs[name])
+            eta = eta + contribution
+            weight = float(getattr(getattr(term, "spec", None), "penalty", 0.0))
+            if weight > 0.0:
+                penalty = penalty + weight * contribution.pow(2).mean()
+        response = self.link.inverse(eta)
+        if return_penalty:
+            return response, penalty
+        return response
 
     def term(self, name: str) -> AdditiveTerm:
         return self.terms[name]

@@ -7,6 +7,8 @@ simulation / Monte-Carlo machinery a true add-on: deleting `dlnam_sim` leaves
 the core fully functional, and the core has zero awareness it exists.
 """
 
+__version__ = "0.1.0"
+
 from .config import (
     ActivationSpec, TransformSpec, SoftCapSpec, ExUSpec, LayerSpec,
     TermSpec, InitSpec, SurfaceTermSpec, SmoothTermSpec, TrendTermSpec,
@@ -23,10 +25,12 @@ from .data import DataProcessor, PreparedData
 from .evaluate import PerformanceEvaluator
 from .visualize import ResultVisualizer
 from .inference import (
-    EffectEstimate, EffectExtractor, UncertaintyMethod, WaldUQ, EnsembleUQ,
+    EffectEstimate, EffectExtractor, UncertaintyMethod, IntervalUQ,
+    ConfidenceIntervalUQ, PredictionIntervalUQ, EnsembleIntervalUQ,
 )
 
 __all__ = [
+    "__version__",
     "ActivationSpec", "TransformSpec", "SoftCapSpec", "ExUSpec", "LayerSpec",
     "TermSpec", "InitSpec", "SurfaceTermSpec", "SmoothTermSpec", "TrendTermSpec",
     "CategoricalTermSpec", "ModelConfig", "TrainConfig", "broadcast_terms",
@@ -34,5 +38,6 @@ __all__ = [
     "AdditiveTerm", "Centering", "EffectCurve", "DLNAM", "Trainer", "DataProcessor", "PreparedData", "PerformanceEvaluator", "ResultVisualizer",
     "SurfaceTerm", "SmoothTerm", "TrendTerm", "CategoricalTerm",
     "EffectEstimate", "EffectExtractor", "UncertaintyMethod",
-    "WaldUQ", "EnsembleUQ",
+    "IntervalUQ", "ConfidenceIntervalUQ", "PredictionIntervalUQ",
+    "EnsembleIntervalUQ",
 ]

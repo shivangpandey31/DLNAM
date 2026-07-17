@@ -12,13 +12,13 @@ Design goals this file is meant to satisfy:
   * Activations are per-layer, and may carry an optional output *transform*
     (e.g. a learnable soft-cap) — see `ActivationSpec` / `TransformSpec`.
   * The multivariate ExU scheme for surfaces is a named strategy, not a hardcode.
-  * A spec round-trips to/from a dict so an experiment config can be saved next
-    to its results and re-loaded verbatim.
+  * Specs are explicit dataclasses so experiment configurations can be recorded
+    alongside results.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Callable, Literal, Optional, Sequence
 
 import torch.nn as nn
@@ -46,8 +46,7 @@ class SoftCapSpec(TransformSpec):
     """Smoothly bounds outputs to (-cap, +cap) via `cap * tanh(x / cap)`.
 
     cap is reparameterised through softplus so it stays positive; `learnable`
-    decides whether it is a trained parameter or a fixed buffer. Replaces the
-    gradient-killing hard `clamp(eta, -10, 10)` in the current forward pass.
+    decides whether it is a trained parameter or a fixed buffer.
     """
     init_cap: float = 8.0
     learnable: bool = True
@@ -82,10 +81,9 @@ class ActivationSpec:
 # ---------------------------------------------------------------------------
 
 SurfaceEncoderStrategy = Literal[
-    "concat",               # per-dimension scalar ExU, concatenated (baseline)
-    "split_concat",         # alias for "concat"
-    "unified_shared_bias",  # alt 1: one bias per input dim (no per-unit localisation)
-    "unified_local_bias",   # alt 2: bias per unit AND per dim (reduces to scalar ExU)
+    "concat",
+    "unified_shared_bias",
+    "unified_local_bias",
 ]
 
 
@@ -93,10 +91,10 @@ SurfaceEncoderStrategy = Literal[
 class ExUSpec:
     """ExU configuration for a term's input layer.
 
-    weight_mean      mean of the log-domain weight init (your exu_mean_val /
-                     exu_mean_trend). Larger -> sharper initial features.
+    weight_mean      mean of the log-domain weight init. Larger values give
+                     sharper initial features.
     weight_mean_lag  surface terms only: separate mean for the LAG axis ExU
-                     (your exu_mean_lag). None -> reuse weight_mean.
+                     None -> reuse weight_mean.
     weight_std       std of the log-domain weight init.
     enabled          False -> linear input layer instead of ExU (and, for
                      surfaces, a linear+sigmoid lag encoder).
@@ -106,7 +104,7 @@ class ExUSpec:
     weight_mean: float = 1.5
     weight_mean_lag: Optional[float] = None
     weight_std: float = 0.5
-    surface_strategy: SurfaceEncoderStrategy = "split_concat"
+    surface_strategy: SurfaceEncoderStrategy = "concat"
     bias_init: Optional["InitSpec"] = None   # None -> uniform(0,1) (ExU default)
 
 
@@ -120,12 +118,14 @@ class InitSpec:
     a small-normal init; attach to LayerSpec (weight_init/bias_init), ExUSpec
     (bias_init), or TermSpec (mix_init)."""
     scheme: str = "normal"   # normal|uniform|constant|zeros|ones|xavier_uniform|
-                             # xavier_normal|kaiming_uniform|kaiming_normal
+                             # xavier_normal|kaiming_uniform|kaiming_normal|
+                             # torch_linear|orthogonal
     mean: float = 0.0
     std: float = 0.01
     lo: float = 0.0
     hi: float = 1.0
     value: float = 0.0
+    gain: float = 1.4142135623730951   # sqrt(2), Kaiming/ReLU gain; used by orthogonal
 
     def apply_(self, t):
         s = self.scheme
@@ -138,6 +138,15 @@ class InitSpec:
         elif s == "xavier_normal":     nn.init.xavier_normal_(t)
         elif s == "kaiming_uniform":   nn.init.kaiming_uniform_(t, nonlinearity="relu")
         elif s == "kaiming_normal":    nn.init.kaiming_normal_(t, nonlinearity="relu")
+        elif s == "orthogonal":
+            # Orthogonal weight init (preserves gradient norms; lowers seed-to-seed
+            # variance). Only defined for 2-D+ tensors; for a 1-D bias fall back to
+            # a small normal. Apply to hidden/output LINEAR layers only -- NOT the
+            # ExU input layer (its weights are exponentiated / live in log-space).
+            if t.dim() >= 2:
+                nn.init.orthogonal_(t, gain=self.gain)
+            else:
+                nn.init.normal_(t, self.mean, self.std)
         elif s == "torch_linear":      # exact PyTorch nn.Linear weight default
             import math
             if t.dim() >= 2:
@@ -162,6 +171,10 @@ class LayerSpec:
     weight_init: Optional[InitSpec] = None  # None -> PyTorch default
     bias_init: Optional[InitSpec] = None
 
+    def __post_init__(self):
+        if not 0.0 <= float(self.dropout) < 1.0:
+            raise ValueError("LayerSpec.dropout must be in [0, 1)")
+
 
 @dataclass(frozen=True)
 class TermSpec:
@@ -173,7 +186,11 @@ class TermSpec:
     scaling      : how this term's input is scaled ('minmax' | 'zscore' | 'none').
                    Travels WITH the term so downstream eval grids derive from it
                    instead of assuming a hardcoded range.
-    penalty      : output-roughness/L2 penalty weight for this term (0 = off).
+    penalty      : L2 penalty on the term contribution during training (0 = off).
+                   Weight decay still controls parameter shrinkage globally.
+    subnet_dropout : dropout probability applied to subnet contributions during
+                   training. This is the subnetwork dropout regulariser used in
+                   neural additive models; 0 disables it.
     constrain_subnet_weights : if True, the subnet mixing weights are softmaxed
                    into an exact CONVEX combination (sum to 1, non-negative);
                    if False (default) they are unconstrained real weights.
@@ -186,8 +203,15 @@ class TermSpec:
     num_subnets: int = 3
     scaling: Literal["minmax", "zscore", "none"] = "minmax"
     penalty: float = 0.0
+    subnet_dropout: float = 0.0
     constrain_subnet_weights: bool = False
     mix_init: Optional[InitSpec] = None
+
+    def __post_init__(self):
+        if float(self.penalty) < 0.0:
+            raise ValueError("TermSpec.penalty must be non-negative")
+        if not 0.0 <= float(self.subnet_dropout) < 1.0:
+            raise ValueError("TermSpec.subnet_dropout must be in [0, 1)")
 
 
 @dataclass(frozen=True)
@@ -228,40 +252,47 @@ class CategoricalTermSpec(TermSpec):
 class ModelConfig:
     """A full model = an intercept + a named collection of terms + a link.
 
-    `terms` is keyed by the *input name* the term consumes (e.g. 'temp',
+    `terms` is keyed by the input name the term consumes (e.g. 'temp',
     'dptp01', 'trend', 'dow'). The model routes inputs to terms by this key,
-    which removes the positional (x_exposures, x_conf, x_time, x_encodings)
-    coupling in the current forward signature.
+    so adding or removing terms does not change the forward signature.
     """
     terms: dict[str, TermSpec] = field(default_factory=dict)
     link: Literal["log", "logit", "identity"] = "log"
 
-    def to_dict(self) -> dict:
-        raise NotImplementedError  # serialization for reproducible runs
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "ModelConfig":
-        raise NotImplementedError
-
 
 @dataclass(frozen=True)
 class TrainConfig:
-    epochs: int = 3500
-    lr: float = 5e-4
+    epochs: int = 2500
+    lr: float = 8e-4
     lr_min: float = 1e-4
     weight_decay: float = 1e-4
-    schedule: Literal["cosine", "plateau", "none"] = "cosine"
+    schedule: Literal["cosine", "none"] = "cosine"
     batch_fraction: Optional[float] = None     # None -> full batch
     n_ensemble: int = 3
     loss: Literal["poisson", "bernoulli"] = "poisson"
-    amp: bool = True                           # mixed precision
     grad_clip: Optional[float] = None
-    diagnostics_every: int = 350               # decoupled from the train step
+    diagnostics_every: Optional[int] = None    # None -> ten diagnostics per fit; 0 disables
     seed: int = 123
 
     def __post_init__(self):
-        # Validate link/loss pairing here at construction, not at epoch 1700.
-        ...
+        if self.epochs < 0:
+            raise ValueError("TrainConfig.epochs must be non-negative")
+        if self.lr <= 0 or self.lr_min < 0:
+            raise ValueError("TrainConfig learning rates must be non-negative, with lr > 0")
+        if self.weight_decay < 0:
+            raise ValueError("TrainConfig.weight_decay must be non-negative")
+        if self.batch_fraction is not None and not 0 < self.batch_fraction <= 1:
+            raise ValueError("TrainConfig.batch_fraction must be in (0, 1]")
+        if self.schedule not in ("cosine", "none"):
+            raise ValueError("TrainConfig.schedule must be 'cosine' or 'none'")
+        if self.loss not in ("poisson", "bernoulli"):
+            raise ValueError("TrainConfig.loss must be 'poisson' or 'bernoulli'")
+        if self.n_ensemble < 1:
+            raise ValueError("TrainConfig.n_ensemble must be at least 1")
+        if self.grad_clip is not None and self.grad_clip <= 0:
+            raise ValueError("TrainConfig.grad_clip must be positive when set")
+        if self.diagnostics_every is not None and self.diagnostics_every < 0:
+            raise ValueError("TrainConfig.diagnostics_every must be non-negative")
 
 
 # ---------------------------------------------------------------------------
@@ -274,9 +305,8 @@ def broadcast_terms(names: Sequence[str],
                     ) -> dict[str, TermSpec]:
     """Apply one default spec across many names, with per-name overrides.
 
-    Restores the convenience of the old `[layers] * n` pattern WITHOUT baking
-    uniformity into the model: any single term, or any single layer within it,
-    can still be overridden. `replace(...)` is handy for partial overrides.
+    Applies one default spec across many names while allowing per-name
+    overrides. `replace(...)` is useful for partial overrides.
     """
     overrides = overrides or {}
     return {n: overrides.get(n, default) for n in names}

@@ -1,35 +1,40 @@
 """
-train.py — the training engine.
+train.py - vectorised training for DLNAM ensembles.
 
-Two execution paths, same result:
-  * vectorised (default): all ensemble members train in ONE pass via
-    torch.func (stack_module_state + functional_call + vmap). This is the fix
-    for the per-model Python loop that made full-size training crawl.
-  * loop fallback (vectorize_ensemble=False): trains members one at a time;
-    the correctness reference for the vectorised path.
+All ensemble members train in one pass via torch.func
+(stack_module_state + functional_call + vmap). Other engine features include
+device-resident data, full-batch or permutation-indexed minibatch training,
+link-matched loss, optional cosine scheduling, gradient clipping, a NaN guard,
+and diagnostics decoupled from the optimisation step.
 
-Other engine features: data kept resident on device (no per-step host<->device
-copies), full-batch or permutation-indexed minibatch, link-matched loss, cosine
-/ plateau / none schedules, gradient clipping, AMP on CUDA, a NaN guard, and
-diagnostics decoupled from the optimisation step.
-
-Scaling is the caller's responsibility (or the processor's, in Phase 3): terms
-must have had fit_scaling applied and inputs must already be on the model scale.
-The Trainer sets each member's intercept from y as a warm start.
+Scaling is handled by DataProcessor before training. The Trainer expects model
+scale tensors and sets each member's intercept from the target mean as a warm
+start.
 """
 
 from __future__ import annotations
 
 import copy
 import math
+import time
 from typing import Optional
 
-import numpy as np
 import torch
 from torch.func import stack_module_state, functional_call, vmap
 
 from .config import ModelConfig, TrainConfig
 from .model import DLNAM
+
+
+def _format_seconds(seconds: float) -> str:
+    seconds = float(seconds)
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, secs = divmod(int(round(seconds)), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    return f"{minutes}m {secs:02d}s"
 
 
 def _per_member_nll(preds: torch.Tensor, y: torch.Tensor, loss: str) -> torch.Tensor:
@@ -48,6 +53,7 @@ class Trainer:
                  device: Optional[torch.device] = None):
         self.cfg = model_config
         self.tcfg = train_config
+        self._validate_link_loss(model_config, train_config)
         self.device = device or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -57,11 +63,23 @@ class Trainer:
             for _ in range(train_config.n_ensemble)
         ]
         self.loss_history: list[list[tuple]] = []
+        self.fit_summary: dict = {}
+
+    @staticmethod
+    def _validate_link_loss(model_config: ModelConfig, train_config: TrainConfig) -> None:
+        valid = {("log", "poisson"), ("logit", "bernoulli")}
+        pair = (model_config.link, train_config.loss)
+        if pair not in valid:
+            allowed = ", ".join(f"{link}/{loss}" for link, loss in sorted(valid))
+            raise ValueError(
+                f"unsupported link/loss pair {pair[0]}/{pair[1]}; "
+                f"supported pairs are {allowed}"
+            )
 
     # ------------------------------------------------------------------
-    def fit(self, inputs: dict, y: torch.Tensor,
-            vectorize_ensemble: bool = True):
+    def fit(self, inputs: dict, y: torch.Tensor):
         t = self.tcfg
+        start = time.perf_counter()
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         y = y.to(self.device)
 
@@ -70,12 +88,19 @@ class Trainer:
             m.init_intercept(y_mean)
             m.train()
 
-        if vectorize_ensemble and len(self.ensemble) > 1:
-            self._fit_vectorised(inputs, y)
-        else:
-            self._fit_loop(inputs, y)
+        self._fit_vectorised(inputs, y)
         for m in self.ensemble:
             m.eval()
+        elapsed = time.perf_counter() - start
+        self.fit_summary = {
+            "fit_seconds": float(elapsed),
+            "epochs": int(t.epochs),
+            "n_samples": int(y.shape[0]),
+            "n_ensemble": int(len(self.ensemble)),
+            "device": str(self.device),
+        }
+        if self._diagnostics_interval(t):
+            print(f"  elapsed {_format_seconds(elapsed)}")
         return self
 
     # ------------------------------------------------------------------
@@ -89,14 +114,15 @@ class Trainer:
         params = {k: v.detach().clone().requires_grad_() for k, v in params.items()}
 
         def fmodel(p, b, inp):
-            return functional_call(base, (p, b), (inp,))
-        batched = vmap(fmodel, in_dims=(0, 0, None))
+            return functional_call(base, (p, b), (inp,), {"return_penalty": True})
+        batched = vmap(fmodel, in_dims=(0, 0, None), randomness="different")
 
         opt = torch.optim.AdamW(list(params.values()), lr=t.lr,
                                 weight_decay=t.weight_decay)
         bs, n_steps = self._batch_plan(n)
         sched = self._make_sched(opt, t.epochs * n_steps)
         hist = [[] for _ in self.ensemble]
+        diagnostics_every = self._diagnostics_interval(t)
 
         for epoch in range(t.epochs + 1):
             perm = torch.randperm(n, device=self.device) if bs < n else None
@@ -104,11 +130,11 @@ class Trainer:
             for s in range(n_steps):
                 bi, by = self._batch(inputs, y, perm, s, bs, n)
                 opt.zero_grad(set_to_none=True)
-                preds = batched(params, buffers, bi)            # (M, B, 1)
-                per_m = _per_member_nll(preds, by, t.loss)      # (M,)
+                preds, penalties = batched(params, buffers, bi)
+                per_m = _per_member_nll(preds, by, t.loss) + penalties
                 loss = per_m.mean()
                 if torch.isnan(loss):
-                    print(f"  NaN at epoch {epoch} — stopping."); 
+                    print(f"  warning: NaN objective at epoch {epoch}; stopping")
                     self._writeback(params, buffers); return
                 loss.backward()
                 if t.grad_clip:
@@ -119,10 +145,10 @@ class Trainer:
                 ep_loss = per_m.detach()
             for i in range(len(self.ensemble)):
                 hist[i].append((epoch, float(ep_loss[i])))
-            if epoch and epoch % max(t.diagnostics_every, 1) == 0:
+            if diagnostics_every and epoch and epoch % diagnostics_every == 0:
                 lr = opt.param_groups[0]["lr"]
-                print(f"  epoch {epoch:4d} | loss {float(ep_loss.mean()):9.4f} "
-                      f"| lr {lr:.2e}")
+                print(f"  epoch {epoch:4d}/{t.epochs:<4d}   "
+                      f"objective {float(ep_loss.mean()):9.4f}   lr {lr:.2e}")
         self._writeback(params, buffers)
         self.loss_history = hist
 
@@ -130,44 +156,29 @@ class Trainer:
         for i, m in enumerate(self.ensemble):
             sd = {k: v[i].detach() for k, v in params.items()}
             sd.update({k: v[i].detach() for k, v in buffers.items()})
-            m.load_state_dict(sd, strict=False)
-
-    # ------------------------------------------------------------------
-    # Loop fallback (reference)
-    # ------------------------------------------------------------------
-    def _fit_loop(self, inputs, y):
-        t = self.tcfg
-        n = y.shape[0]
-        self.loss_history = []
-        for m in self.ensemble:
-            criterion = m.link.make_loss()
-            opt = torch.optim.AdamW(m.parameters(), lr=t.lr,
-                                    weight_decay=t.weight_decay)
-            bs, n_steps = self._batch_plan(n)
-            sched = self._make_sched(opt, t.epochs * n_steps)
-            hist = []
-            for epoch in range(t.epochs + 1):
-                perm = torch.randperm(n, device=self.device) if bs < n else None
-                last = None
-                for s in range(n_steps):
-                    bi, by = self._batch(inputs, y, perm, s, bs, n)
-                    opt.zero_grad(set_to_none=True)
-                    loss = criterion(m(bi), by)
-                    if torch.isnan(loss):
-                        print(f"  NaN at epoch {epoch} — stopping."); break
-                    loss.backward()
-                    if t.grad_clip:
-                        torch.nn.utils.clip_grad_norm_(m.parameters(), t.grad_clip)
-                    opt.step()
-                    if sched is not None:
-                        sched.step()
-                    last = loss.item()
-                hist.append((epoch, last))
-            self.loss_history.append(hist)
+            missing, unexpected = m.load_state_dict(sd, strict=False)
+            # strict=False silently ignores name mismatches; if the stacked-state
+            # keys don't match the module's parameter names, the TRAINED weights are
+            # never written back and the member keeps its INITIALISATION -- which
+            # silently corrupts anything reading the params afterwards (e.g. the
+            # last-layer Laplace covariance). Surface it loudly.
+            if missing or unexpected:
+                raise RuntimeError(
+                    "vmap writeback key mismatch: trained weights not applied. "
+                    f"missing={list(missing)[:6]} unexpected={list(unexpected)[:6]}. "
+                    "The stacked-state keys differ from the module state_dict; "
+                    "the ensemble would keep initialisation values."
+                )
 
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _diagnostics_interval(t: TrainConfig) -> int:
+        if t.diagnostics_every is None:
+            return max(1, t.epochs // 10) if t.epochs else 0
+        return int(t.diagnostics_every)
+
     def _batch_plan(self, n):
         if self.tcfg.batch_fraction is None:
             return n, 1
@@ -186,6 +197,4 @@ class Trainer:
         if s == "cosine":
             return torch.optim.lr_scheduler.CosineAnnealingLR(
                 opt, T_max=max(total_steps, 1), eta_min=self.tcfg.lr_min)
-        if s == "plateau":
-            return None  # stepped externally in a future revision; full-batch only
         return None
