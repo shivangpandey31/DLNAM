@@ -142,8 +142,3 @@ class AdditiveTerm(nn.Module, ABC):
             log_effect=log - anchor,
             label=self.label or self.name,
         )
-
-    # --- introspection used by inference/penalties ----------------------
-    def parameters_l2(self) -> torch.Tensor:
-        """Optional roughness/output penalty contribution; default 0."""
-        return torch.zeros(())

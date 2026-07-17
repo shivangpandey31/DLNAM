@@ -39,9 +39,13 @@ class CategoricalTerm(AdditiveTerm):
         else:
             self.emb = nn.Embedding(C, layers[0].width)
             mods = [layers[0].activation.build()]
+            if layers[0].dropout > 0:
+                mods.append(nn.Dropout(layers[0].dropout))
             last = layers[0].width
             for ls in layers[1:]:
                 mods += [nn.Linear(last, ls.width), ls.activation.build()]
+                if ls.dropout > 0:
+                    mods.append(nn.Dropout(ls.dropout))
                 last = ls.width
             mods.append(nn.Linear(last, 1))
             self.tail = nn.Sequential(*mods)

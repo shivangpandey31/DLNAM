@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 
 from ..config import SmoothTermSpec, TrendTermSpec, ExUSpec
-from ..layers import ExULayer, init_linear, init_mix
+from ..layers import ExULayer, apply_subnet_dropout, init_linear, init_mix
 from .base import AdditiveTerm
 
 
@@ -37,6 +37,8 @@ def _build_1d_subnet(spec, input_exu: Optional[ExUSpec]) -> nn.Sequential:
         mods.append(init_linear(nn.Linear(1, first_w),
                                 layers[0].weight_init, layers[0].bias_init))
     mods.append(layers[0].activation.build())
+    if layers[0].dropout > 0:
+        mods.append(nn.Dropout(layers[0].dropout))
     last = first_w
     for ls in layers[1:]:
         mods.append(init_linear(nn.Linear(last, ls.width), ls.weight_init, ls.bias_init))
@@ -81,7 +83,8 @@ class _OneDTerm(AdditiveTerm):
 
     # --- mixing ----------------------------------------------------------
     def _mix(self):
-        return torch.softmax(self.mix, dim=0) if self.spec.constrain_subnet_weights else self.mix
+        w = torch.softmax(self.mix, dim=0) if self.spec.constrain_subnet_weights else self.mix
+        return apply_subnet_dropout(w, self.spec.subnet_dropout, self.training)
 
     def _mixed(self, x: torch.Tensor) -> torch.Tensor:
         w = self._mix()

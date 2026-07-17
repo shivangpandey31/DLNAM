@@ -1,9 +1,9 @@
 """
 terms/surface.py — the exposure value x lag surface, plus the pluggable
-multivariate-ExU encoder strategy you want to experiment with.
+multivariate-ExU encoder strategies.
 
 The encoder is the *only* place the 2-D (value, lag) ExU scheme lives, so
-swapping strategies is a one-line spec change and a fair A/B in an MC study.
+encoder comparisons can be made through a term-spec change.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import torch.nn as nn
 
 from ..config import SurfaceTermSpec
 from ..layers import (ExULayer, ExULayerSharedBias, ExULayerLocalBias,
-                      init_linear, init_mix)
+                      apply_subnet_dropout, init_linear, init_mix)
 from .base import AdditiveTerm
 
 
@@ -47,8 +47,7 @@ class LinearEncoder(SurfaceEncoder):
 
 
 class SplitConcatEncoder(SurfaceEncoder):
-    """Current behaviour: ExU(value) for half the features, ExU/linear(lag)
-    for the other half, then concatenate. Baseline to beat."""
+    """Separate value and lag encoders whose features are concatenated."""
 
     def __init__(self, out_features: int, activation_factory,
                  weight_mean_val: float, weight_mean_lag: float,
@@ -74,9 +73,9 @@ class SplitConcatEncoder(SurfaceEncoder):
 
 
 class Joint2DExUEncoder(SurfaceEncoder):
-    """Unified ExU, one bias per input dimension (paper alternative 1).
+    """Unified ExU with one bias per input dimension.
     h = sigma(e^W (x - b)). Mixes value/lag in the input layer; no per-unit
-    localisation. Negative control for the localisation ablation."""
+    localisation."""
 
     def __init__(self, out_features: int, activation_factory,
                  weight_mean_val: float, weight_mean_lag: float, weight_std: float,
@@ -92,7 +91,7 @@ class Joint2DExUEncoder(SurfaceEncoder):
 
 
 class UnifiedLocalBiasEncoder(SurfaceEncoder):
-    """Unified ExU, bias per unit AND per input dimension (paper alternative 2).
+    """Unified ExU with a bias per unit and per input dimension.
     h = sigma((e^W ⊙ (1 x^T - B)) 1). Mixes value/lag in the input layer while
     preserving per-unit localisation; reduces to scalar ExU at k0=1."""
 
@@ -124,7 +123,7 @@ def make_surface_encoder(spec: SurfaceTermSpec) -> SurfaceEncoder:
     if exu is None or not exu.enabled:
         return LinearEncoder(out_features=out_features, activation_factory=act)
 
-    if strategy in ("concat", "split_concat"):
+    if strategy == "concat":
         return SplitConcatEncoder(
             out_features=out_features, activation_factory=act,
             weight_mean_val=mean_val, weight_mean_lag=mean_lag,
@@ -144,6 +143,8 @@ class _SurfaceSubnet(nn.Module):
     def __init__(self, spec: SurfaceTermSpec):
         super().__init__()
         self.encoder = make_surface_encoder(spec)
+        self.encoder_dropout = (nn.Dropout(spec.layers[0].dropout)
+                                if spec.layers[0].dropout > 0 else nn.Identity())
         last = spec.layers[0].width
         tail = []
         for ls in spec.layers[1:]:
@@ -157,7 +158,7 @@ class _SurfaceSubnet(nn.Module):
         self.tail = nn.Sequential(*tail)
 
     def forward(self, vl: torch.Tensor) -> torch.Tensor:
-        feat = self.encoder(vl[:, 0:1], vl[:, 1:2])
+        feat = self.encoder_dropout(self.encoder(vl[:, 0:1], vl[:, 1:2]))
         return self.tail(feat)
 
 
@@ -169,9 +170,7 @@ class SurfaceTerm(AdditiveTerm):
     """value x lag distributed-lag surface.
 
     Holds `num_subnets` subnets, mixed by learned weights; forward() sums the
-    per-lag contributions over the lag window. NOTE: the per-subnet stack below
-    is the vectorisation hotspot for phase 3 (group params + vmap/bmm); the
-    loop is kept here for clarity while the contract is being proven.
+    per-lag contributions over the lag window.
     """
 
     def __init__(self, name: str, spec: SurfaceTermSpec):
@@ -206,8 +205,10 @@ class SurfaceTerm(AdditiveTerm):
     # --- mixing ----------------------------------------------------------
     def _mix(self) -> torch.Tensor:
         if self.spec.constrain_subnet_weights:
-            return torch.softmax(self.mix, dim=0)
-        return self.mix
+            w = torch.softmax(self.mix, dim=0)
+        else:
+            w = self.mix
+        return apply_subnet_dropout(w, self.spec.subnet_dropout, self.training)
 
     def _mixed(self, vl: torch.Tensor) -> torch.Tensor:
         w = self._mix()
