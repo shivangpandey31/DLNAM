@@ -58,6 +58,20 @@ class CategoricalTerm(AdditiveTerm):
         # x: (B,) long category indices  -> (B, 1)
         return self.tail(self.emb(x.long()))
 
+    def _last_layer_design(self, x: torch.Tensor) -> torch.Tensor:
+        """Exact design for the categorical term's final linear parameters."""
+        x = x.long().reshape(-1)
+        if isinstance(self.tail, nn.Identity):
+            return torch.nn.functional.one_hot(
+                x, num_classes=self.num_categories
+            ).to(dtype=self.emb.weight.dtype)
+        feat = self.emb(x)
+        feat = self.tail[:-1](feat)
+        return torch.cat([
+            feat,
+            torch.ones((len(x), 1), dtype=feat.dtype, device=feat.device),
+        ], dim=1)
+
     def default_grid(self, n: int = None) -> np.ndarray:
         return np.arange(self.num_categories, dtype=float)
 

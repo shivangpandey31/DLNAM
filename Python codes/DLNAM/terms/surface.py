@@ -225,8 +225,36 @@ class SurfaceTerm(AdditiveTerm):
         mixed = self._mixed(vl)                                    # (B*Lp1, 1)
         return mixed.view(B, Lp1).sum(dim=1, keepdim=True)         # (B, 1)
 
+    def _last_layer_design(self, x: torch.Tensor) -> torch.Tensor:
+        """Exact design for the fixed-representation final linear layers."""
+        B, Lp1 = x.shape
+        v = x.reshape(-1, 1)
+        l = self.lag_grid.to(x.device).repeat(B).unsqueeze(1)
+        vl = torch.cat([v, l], dim=1)
+        point_design = self._last_layer_point_design(vl)
+        return point_design.view(B, Lp1, -1).sum(dim=1)
+
+    def _last_layer_point_design(self, vl: torch.Tensor) -> torch.Tensor:
+        """Exact final-layer design for individual exposure-lag points."""
+        mix = self._mix()
+        blocks = []
+        for weight, subnet in zip(mix, self.subnets):
+            feat = subnet.encoder_dropout(
+                subnet.encoder(vl[:, 0:1], vl[:, 1:2])
+            )
+            feat = subnet.tail[:-1](feat)
+            blocks.extend([
+                weight * feat,
+                weight.expand(vl.shape[0], 1),
+            ])
+        return torch.cat(blocks, dim=1)
+
     # --- interpretation --------------------------------------------------
-    def default_grid(self, n: int = 200) -> np.ndarray:
+    # An odd count puts the midpoint of a symmetric range on a grid node, which
+    # matters because Centering.anchor snaps a reference value to the nearest
+    # node: on-grid, reference centring is exact and agrees with the convention
+    # the comparator software uses.
+    def default_grid(self, n: int = 201) -> np.ndarray:
         lo, hi = self._value_range
         return np.linspace(lo, hi, n)
 

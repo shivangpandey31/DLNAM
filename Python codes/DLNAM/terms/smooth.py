@@ -94,7 +94,19 @@ class _OneDTerm(AdditiveTerm):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self._mixed(x)                                     # x: (B, 1) scaled
 
-    def default_grid(self, n: int = 200) -> np.ndarray:
+    def _last_layer_design(self, x: torch.Tensor) -> torch.Tensor:
+        """Exact design for the fixed-representation final linear layers."""
+        mix = self._mix()
+        blocks = []
+        for weight, subnet in zip(mix, self.subnets):
+            feat = subnet[:-1](x)
+            blocks.extend([
+                weight * feat,
+                weight.expand(x.shape[0], 1),
+            ])
+        return torch.cat(blocks, dim=1)
+
+    def default_grid(self, n: int = 201) -> np.ndarray:
         lo, hi = self._value_range
         return np.linspace(lo, hi, n)
 
