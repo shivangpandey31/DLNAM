@@ -52,16 +52,21 @@ SEED = 0
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BENCH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mc_joint_data")
 RSCRIPT = "Rscript"
-VALUE_DF_GRID = (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
-LAG_DF_GRID = (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
-PENALIZED_VALUE_DF = max(VALUE_DF_GRID)
-PENALIZED_LAG_DF = max(LAG_DF_GRID)
+# Identical to the single-exposure comparison: the 1-10 marginal degrees of
+# freedom used for the criterion-selected cross-basis in both Gasparrini et al.
+# (2017) and Mork and Wilson (2022), and the rank-10 marginals of the former.
+VALUE_DF_GRID = tuple(range(2, 11))
+LAG_DF_GRID = tuple(range(2, 11))
+PENALIZED_VALUE_DF = 10
+PENALIZED_LAG_DF = 10
+# Mork and Wilson (2022) sec. 4.3/5.1, as in the single-exposure comparison.
 TDLNM_SETTINGS = {
     "burn": 5000,
     "iter": 15000,
-    "thin": 5,
-    "attempts": 3,
-    "exposure_splits": 20,
+    "thin": 10,
+    "attempts": 10,
+    "exposure_splits": 30,
+    "trees": 20,
     "adjust_value_df": 4,
     "adjust_lag_df": 4,
 }
@@ -169,6 +174,7 @@ def export_joint_datasets(
         "tdlnm_thin": int(TDLNM_SETTINGS["thin"]),
         "tdlnm_attempts": int(TDLNM_SETTINGS["attempts"]),
         "tdlnm_exposure_splits": int(TDLNM_SETTINGS["exposure_splits"]),
+        "tdlnm_trees": int(TDLNM_SETTINGS["trees"]),
         "tdlnm_adjust_value_df": int(TDLNM_SETTINGS["adjust_value_df"]),
         "tdlnm_adjust_lag_df": int(TDLNM_SETTINGS["adjust_lag_df"]),
         "n_obs": int(n_obs),
@@ -345,7 +351,7 @@ def main():
     out_dir = results_dir(here)
 
     dgp = MX.joint_dgp(lag_max=LAG, include_null=INCLUDE_NULL)
-    grid = np.linspace(*MX.VALUE_RANGE, 200)
+    grid = np.linspace(*MX.VALUE_RANGE, 201)
     cen = Centering(method="reference", value=REF)
 
     export_joint_datasets(
@@ -395,7 +401,7 @@ def main():
         n_obs=N_OBS,
         base_seed=SEED,
         device=DEVICE,
-        se_source="laplace",
+        se_source="laplace+ensemble",
     ).run(progress=True)
 
     dlnm_studies = {
@@ -515,10 +521,11 @@ def main():
             "tdlnm_thin": TDLNM_SETTINGS["thin"],
             "tdlnm_attempts": TDLNM_SETTINGS["attempts"],
             "tdlnm_exposure_splits": TDLNM_SETTINGS["exposure_splits"],
+            "tdlnm_trees": TDLNM_SETTINGS["trees"],
             "tdlnm_adjust_value_df": TDLNM_SETTINGS["adjust_value_df"],
             "tdlnm_adjust_lag_df": TDLNM_SETTINGS["adjust_lag_df"],
             "include_null": INCLUDE_NULL,
-            "se_source": "laplace",
+            "se_source": "laplace+ensemble",
             "baseline_results": baseline_path if baseline_results is not None else None,
         },
         exposures=EXPOSURES,

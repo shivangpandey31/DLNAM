@@ -72,6 +72,10 @@ CI_LEVEL = 0.95
 EPOCHS = 2500
 N_ENSEMBLE = 3
 SEED = 0
+# One interval construction across every analysis: the last-layer
+# Laplace variance plus the between-member ensemble spread.
+SE_SOURCE = "laplace+ensemble"
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 DOW_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday",
@@ -79,16 +83,27 @@ DOW_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday",
 
 # MC DLNM search grid. The penalised DLNM basis dimensions default to the upper
 # end of this grid, capped by lag_max for the lag basis.
+# The applied grid is narrower than the simulation's 2-10. The published
+# analysis of this dataset (the dlnm package example, Gasparrini 2011) uses a
+# 5-degree-of-freedom exposure margin, so this range brackets the literature
+# value. Widening it to the simulation grid was tested and rejected: the three
+# cross-basis fits then oscillate, QAIC placing minimum mortality at -19.7 C,
+# with roughly five times the total variation of the published fit, while the
+# DLNAM and the treed model are unaffected.
 VALUE_DF_GRID = tuple(range(2, 6))
 LAG_DF_GRID = tuple(range(2, 6))
 PENALIZED_VALUE_DF = max(VALUE_DF_GRID)
 PENALIZED_LAG_DF = max(LAG_DF_GRID)
+# Identical to the simulation, which in turn follows Mork and Wilson (2022):
+# 20 trees, 30 candidate exposure splits, 5000 burn-in, 15,000 post-burn,
+# thinning by 10.
 TDLNM_SETTINGS = {
     "burn": 5000,
     "iter": 15000,
-    "thin": 5,
+    "thin": 10,
     "attempts": 10,
-    "exposure_splits": 20,
+    "exposure_splits": 30,
+    "trees": 20,
 }
 SURFACE_SCALE_MODE = "per_model"  # "shared" or "per_model"
 
@@ -242,6 +257,7 @@ def prepare_chicago_bench() -> tuple[pd.DataFrame, np.ndarray, float, int]:
         "tdlnm_thin": int(TDLNM_SETTINGS["thin"]),
         "tdlnm_attempts": int(TDLNM_SETTINGS["attempts"]),
         "tdlnm_exposure_splits": int(TDLNM_SETTINGS["exposure_splits"]),
+        "tdlnm_trees": int(TDLNM_SETTINGS["trees"]),
         "tdlnm_seed": int(SEED),
         "confounder_spec": CONFOUNDER_SPEC,
         "trend_df": int(TREND_DF_PER_YR * n_years),
@@ -304,7 +320,7 @@ def fit_dlnam(df: pd.DataFrame, grid: np.ndarray) -> dict:
     link = make_link("log")
     centering = Centering(method="median")
     extractor = EffectExtractor.with_laplace(
-        trainer.ensemble, prepared, link, centering
+        trainer.ensemble, prepared, link, centering, interval=SE_SOURCE
     )
     estimate = extractor.extract("temp", grid, alpha=1.0 - CI_LEVEL)
     ref = float(trainer.ensemble[0].term("temp")._data_median)
@@ -385,6 +401,7 @@ def save_outputs(dlnam: dict, dlnm_curves: dict[str, pd.DataFrame],
             "tdlnm_thin": int(TDLNM_SETTINGS["thin"]),
             "tdlnm_attempts": int(TDLNM_SETTINGS["attempts"]),
             "tdlnm_exposure_splits": int(TDLNM_SETTINGS["exposure_splits"]),
+            "tdlnm_trees": int(TDLNM_SETTINGS["trees"]),
             "tdlnm_seed": int(SEED),
             "trend_df": int(TREND_DF_PER_YR * n_years),
             "dlnam_ci": "last_layer_laplace",
