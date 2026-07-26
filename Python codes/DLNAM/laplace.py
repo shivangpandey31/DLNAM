@@ -60,43 +60,25 @@ def _term_last_layer_params(term):
     return params
 
 
-def collect_last_layer_params(model):
+def collect_last_layer_params(model, include_terms=None):
     """Ordered `(name, parameter)` list used by the Laplace approximation.
 
     Included by design:
       * global intercept;
-      * final linear layers of every additive term/subnet.
+      * final linear layers of every included additive term/subnet.
 
     The intercept is not prior-penalised in the covariance. The final-layer
     parameters share the evidence-selected prior precision. Subnet mixing
     weights are treated as fixed at their fitted values.
     """
+    include_terms = None if include_terms is None else set(include_terms)
     out = [("intercept", model.intercept)]
     for term_name, term in model.terms.items():
+        if include_terms is not None and term_name not in include_terms:
+            continue
         for i, param in enumerate(_term_last_layer_params(term)):
             out.append((f"{term_name}.ll{i}", param))
     return out
-
-
-def _jacobian_rows(vector_fn, params, n_out):
-    """Dense Jacobian of `vector_fn() -> (n_out,)` w.r.t. `params`.
-
-    This uses one reverse-mode pass per output entry. It is slower than a
-    hand-coded design matrix, but robust across surfaces, smooth terms, trend
-    terms, and future term implementations because it differentiates the actual
-    model path used for training and prediction.
-    """
-    out = vector_fn()
-    P = int(sum(p.numel() for p in params))
-    J = np.zeros((n_out, P), dtype=float)
-    for k in range(n_out):
-        grads = torch.autograd.grad(out[k], params, retain_graph=True,
-                                    allow_unused=True)
-        row = []
-        for grad, param in zip(grads, params):
-            row.append((torch.zeros_like(param) if grad is None else grad).reshape(-1))
-        J[k] = torch.cat(row).detach().cpu().numpy()
-    return J
 
 
 def pooled_evidence_lambda(evidence_terms, iters=300, tol=1e-7):
@@ -126,15 +108,25 @@ def pooled_evidence_lambda(evidence_terms, iters=300, tol=1e-7):
 class LastLayerLaplace:
     """Joint last-layer Laplace approximation for one DLNAM member."""
 
-    def __init__(self, model, prepared_inputs, mu_hat, *, phi=1.0,
-                 ridge=1e-6, prior_precision=None):
+    def __init__(self, model, prepared_inputs, information_weight, *, phi=1.0,
+                 ridge=1e-6, prior_precision=None, include_terms=None,
+                 fisher_batch_size=4096):
         self.model = model
+        self.model.eval()
         self.device = next(model.parameters()).device
-        self.inputs = {k: v.to(self.device) for k, v in prepared_inputs.items()}
-        self.mu_hat = np.asarray(mu_hat, dtype=float).reshape(-1).clip(1e-9)
+        selected = (set(model.terms) if include_terms is None
+                    else set(include_terms))
+        self.inputs = {
+            k: prepared_inputs[k].to(self.device) for k in selected
+        }
+        self.information_weight = np.asarray(
+            information_weight, dtype=float
+        ).reshape(-1).clip(1e-12)
         self.phi = float(phi)
         self.ridge = float(ridge)
-        self.named_params = collect_last_layer_params(model)
+        self.include_terms = None if include_terms is None else tuple(include_terms)
+        self.fisher_batch_size = max(int(fisher_batch_size), 1)
+        self.named_params = collect_last_layer_params(model, include_terms)
         self.params = [p for _, p in self.named_params]
         self.P = int(sum(p.numel() for p in self.params))
         self.prior_mask = self._prior_mask()
@@ -152,19 +144,62 @@ class LastLayerLaplace:
     def _N(self):
         return next(iter(self.inputs.values())).shape[0]
 
-    def _eta_vector(self):
-        eta = self.model.intercept.expand(self._N())
+    def _design_block(self, start, stop):
+        """Last-layer Jacobian rows for one observation block.
+
+        Conditional on the fitted representation and mixing weights, these
+        rows are the exact linear design. No numerical differentiation or
+        approximation is involved.
+        """
+        B = stop - start
+        blocks = [torch.ones((B, 1), device=self.device,
+                             dtype=self.model.intercept.dtype)]
         for name, term in self.model.terms.items():
-            eta = eta + term(self.inputs[name]).reshape(-1)
-        return eta
+            if self.include_terms is not None and name not in self.include_terms:
+                continue
+            design_fn = getattr(term, "_last_layer_design", None)
+            if design_fn is None:
+                raise NotImplementedError(
+                    f"last-layer design is unavailable for {type(term).__name__}"
+                )
+            blocks.append(design_fn(self.inputs[name][start:stop]))
+        design = torch.cat(blocks, dim=1)
+        if design.shape != (B, self.P):
+            raise RuntimeError(
+                f"last-layer design has shape {tuple(design.shape)}, "
+                f"expected {(B, self.P)}"
+            )
+        return design
 
     def _ftwf(self):
-        """Poisson/quasi-Poisson last-layer information Phi^T W Phi."""
+        """GLM information Phi^T W Phi, accumulated in exact row blocks."""
         if self._FtWF is None:
-            Phi = _jacobian_rows(self._eta_vector, self.params, self._N())
-            if len(self.mu_hat) != Phi.shape[0]:
-                raise ValueError("mu_hat length does not match prepared input rows")
-            self._FtWF = (Phi * self.mu_hat[:, None]).T @ Phi
+            N = self._N()
+            if len(self.information_weight) != N:
+                raise ValueError(
+                    "information weights do not match prepared input rows"
+                )
+            F = np.zeros((self.P, self.P), dtype=float)
+            batch_size = min(self.fisher_batch_size, N)
+            start = 0
+            with torch.no_grad():
+                while start < N:
+                    stop = min(start + batch_size, N)
+                    try:
+                        block = self._design_block(start, stop)
+                    except torch.OutOfMemoryError:
+                        if batch_size == 1:
+                            raise
+                        batch_size = max(batch_size // 2, 1)
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        continue
+                    Phi = block.detach().cpu().numpy().astype(float, copy=False)
+                    weight = self.information_weight[start:stop]
+                    F += (Phi * weight[:, None]).T @ Phi
+                    start = stop
+            self.fisher_batch_size = batch_size
+            self._FtWF = 0.5 * (F + F.T)
         return self._FtWF
 
     def evidence_terms(self):
@@ -206,56 +241,49 @@ class LastLayerLaplace:
             self._eigcache = (w.clip(1e-30), V)
         return self._eigcache
 
-    def _term_values(self, term, raw_values):
-        raw = np.asarray(raw_values, dtype=float)
-        if hasattr(term, "lag_grid"):
-            scaled = term._to_scaled(raw)
-            x = torch.tensor(scaled, dtype=torch.float32, device=self.device)
-            win = x.view(-1, 1).repeat(1, int(term.lag_max) + 1)
-            return term(win).reshape(-1)
-
-        if hasattr(term, "_to_scaled"):
-            scaled = term._to_scaled(raw)
-            x = torch.tensor(scaled, dtype=torch.float32, device=self.device).view(-1, 1)
-            return term(x).reshape(-1)
-
-        if hasattr(term, "num_categories"):
-            idx = torch.tensor(np.rint(raw).astype(int), dtype=torch.long,
-                               device=self.device)
-            return term(idx).reshape(-1)
-
-        raise NotImplementedError(
-            f"Laplace effect SE is not implemented for term type {type(term).__name__}"
-        )
-
-    def _surface_values(self, term, grid_raw, ref_raw):
-        """Pointwise surface contrast f(x, lag) - f(ref, lag), lag-major."""
-        if not hasattr(term, "lag_grid"):
-            raise ValueError("surface_se is only defined for surface terms")
-        grid_raw = np.asarray(grid_raw, dtype=float)
-        scaled = term._to_scaled(grid_raw)
-        ref_scaled = float(term._to_scaled(np.asarray([ref_raw], dtype=float))[0])
-        G = len(scaled)
-        lags = term.lag_grid.to(self.device)
-        Lp1 = int(lags.numel())
-        vv = torch.tensor(np.tile(scaled, Lp1), dtype=torch.float32,
-                          device=self.device).view(-1, 1)
-        rr = torch.full((Lp1 * G, 1), ref_scaled, dtype=torch.float32,
-                        device=self.device)
-        ll = lags.repeat_interleave(G).view(-1, 1)
-        ev = term._mixed(torch.cat([vv, ll], dim=1)).reshape(-1)
-        er = term._mixed(torch.cat([rr, ll], dim=1)).reshape(-1)
-        return ev - er
+    def _term_columns(self, term_name):
+        columns = []
+        offset = 0
+        prefix = f"{term_name}.ll"
+        for name, param in self.named_params:
+            indices = range(offset, offset + param.numel())
+            if name.startswith(prefix):
+                columns.extend(indices)
+            offset += param.numel()
+        return columns
 
     def _effect_A(self, term_name, grid_raw, ref_raw):
         term = self.model.term(term_name)
         grid_raw = np.asarray(grid_raw, dtype=float)
-        ref_raw = np.asarray([ref_raw], dtype=float)
+        raw = np.concatenate([grid_raw, np.asarray([ref_raw], dtype=float)])
 
-        def centered_effect():
-            return self._term_values(term, grid_raw) - self._term_values(term, ref_raw)[0]
+        if hasattr(term, "lag_grid"):
+            scaled = term._to_scaled(raw)
+            x = torch.tensor(scaled, dtype=torch.float32, device=self.device)
+            x = x.view(-1, 1).repeat(1, int(term.lag_max) + 1)
+        elif hasattr(term, "_to_scaled"):
+            scaled = term._to_scaled(raw)
+            x = torch.tensor(scaled, dtype=torch.float32,
+                             device=self.device).view(-1, 1)
+        elif hasattr(term, "num_categories"):
+            x = torch.tensor(np.rint(raw).astype(int), dtype=torch.long,
+                             device=self.device)
+        else:
+            raise NotImplementedError(
+                f"Laplace effect SE is unavailable for {type(term).__name__}"
+            )
 
-        return _jacobian_rows(centered_effect, self.params, len(grid_raw))
+        with torch.no_grad():
+            design = term._last_layer_design(x).detach().cpu().numpy()
+        centered = design[:-1] - design[-1]
+
+        columns = self._term_columns(term_name)
+        if centered.shape[1] != len(columns):
+            raise RuntimeError("term design does not match collected parameters")
+
+        A = np.zeros((len(grid_raw), self.P), dtype=float)
+        A[:, columns] = centered
+        return A
 
     def _se_from_design(self, A):
         w, V = self._eigh_hessian()
@@ -270,13 +298,31 @@ class LastLayerLaplace:
     def surface_se(self, term_name, grid_raw, ref_raw):
         """SE for f(x, lag) - f(ref, lag), returned as (n_lags, n_grid)."""
         term = self.model.term(term_name)
+        if not hasattr(term, "_last_layer_point_design"):
+            raise ValueError("surface_se is only defined for surface terms")
         grid_raw = np.asarray(grid_raw, dtype=float)
         G = len(grid_raw)
-        Lp1 = int(term.lag_grid.numel())
-
-        def centered_surface():
-            return self._surface_values(term, grid_raw, ref_raw)
-
-        A = _jacobian_rows(centered_surface, self.params, Lp1 * G)
+        scaled = term._to_scaled(grid_raw)
+        ref_scaled = float(term._to_scaled(np.asarray([ref_raw], dtype=float))[0])
+        lags = term.lag_grid.to(self.device)
+        Lp1 = int(lags.numel())
+        vv = torch.tensor(np.tile(scaled, Lp1), dtype=torch.float32,
+                          device=self.device).view(-1, 1)
+        rr = torch.full((Lp1 * G, 1), ref_scaled, dtype=torch.float32,
+                        device=self.device)
+        ll = lags.repeat_interleave(G).view(-1, 1)
+        with torch.no_grad():
+            observed = term._last_layer_point_design(
+                torch.cat([vv, ll], dim=1)
+            ).detach().cpu().numpy()
+            reference = term._last_layer_point_design(
+                torch.cat([rr, ll], dim=1)
+            ).detach().cpu().numpy()
+        centered = observed - reference
+        columns = self._term_columns(term_name)
+        if centered.shape[1] != len(columns):
+            raise RuntimeError("surface design does not match collected parameters")
+        A = np.zeros((Lp1 * G, self.P), dtype=float)
+        A[:, columns] = centered
         return self._se_from_design(A).reshape(Lp1, G)
 

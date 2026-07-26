@@ -27,6 +27,7 @@ from .visualize import ResultVisualizer
 from .inference import (
     EffectEstimate, EffectExtractor, UncertaintyMethod, IntervalUQ,
     ConfidenceIntervalUQ, PredictionIntervalUQ, EnsembleIntervalUQ,
+    needs_laplace,
 )
 
 __all__ = [
@@ -39,5 +40,5 @@ __all__ = [
     "SurfaceTerm", "SmoothTerm", "TrendTerm", "CategoricalTerm",
     "EffectEstimate", "EffectExtractor", "UncertaintyMethod",
     "IntervalUQ", "ConfidenceIntervalUQ", "PredictionIntervalUQ",
-    "EnsembleIntervalUQ",
+    "EnsembleIntervalUQ", "needs_laplace",
 ]

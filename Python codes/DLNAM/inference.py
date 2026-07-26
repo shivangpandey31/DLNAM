@@ -61,6 +61,23 @@ class UncertaintyMethod(ABC):
         """Return (lo, hi) on the response scale at the given grid points."""
 
 
+#: se_source values that require the last-layer Laplace machinery to be built.
+LAPLACE_SE_SOURCES = ("laplace", "laplace_ensemble")
+
+
+def needs_laplace(se_source) -> bool:
+    """Whether this interval type needs `EffectExtractor.with_laplace`.
+
+    Accepts either a resolved se_source or any user-facing alias, because
+    callers reach this from both sides: `IntervalUQ.se_source` is already
+    resolved, whereas experiment runners pass the alias they were configured
+    with ("laplace+ensemble"). Resolving here keeps the two in step, so an
+    extractor is never built without the Laplace inputs an interval will ask for.
+    """
+    resolved = IntervalUQ._ALIASES.get(se_source, se_source)
+    return resolved in LAPLACE_SE_SOURCES
+
+
 class IntervalUQ(UncertaintyMethod):
     """Coverage-bearing Wald interval on the effect curve.
 
@@ -75,6 +92,9 @@ class IntervalUQ(UncertaintyMethod):
         "predictive": "poisson",
         "poisson": "poisson",
         "ensemble": "ensemble",
+        "laplace+ensemble": "laplace_ensemble",
+        "laplace_ensemble": "laplace_ensemble",
+        "combined": "laplace_ensemble",
     }
 
     def __init__(self, interval: str = "ensemble"):
@@ -87,6 +107,8 @@ class IntervalUQ(UncertaintyMethod):
     @property
     def label(self) -> str:
         if self.se_source == "laplace":
+            return "pointwise confidence interval"
+        if self.se_source == "laplace_ensemble":
             return "pointwise confidence interval"
         if self.se_source == "poisson":
             return "pointwise prediction interval"
@@ -137,11 +159,22 @@ class IntervalUQ(UncertaintyMethod):
             hi = _effect_to_response(link, log_mean + z * se_log)
             return lo, hi
 
-        if self.se_source == "laplace":
+        if self.se_source in ("laplace", "laplace_ensemble"):
             if laplace_se is None:
-                raise ValueError("se_source='laplace' needs laplace_se "
+                raise ValueError(f"se_source='{self.se_source}' needs laplace_se "
                                  "(precomputed per-grid-point SE on the log scale)")
             se_log = np.asarray(laplace_se, dtype=float)
+            if self.se_source == "laplace_ensemble":
+                # Law of total variance across the two sources the estimator
+                # actually has: the last-layer Laplace SE is a WITHIN-member
+                # sampling variance computed with the learned representation held
+                # fixed, and members differ precisely in that representation, so
+                # their pointwise spread estimates the term the conditioning
+                # omits. Population (ddof=0) spread, matching the convention in
+                # EffectEstimate.log_se so the shipped interval and the
+                # StudyResult diagnostic are the same quantity.
+                between = np.std(log_effect_per_member, axis=0)
+                se_log = np.sqrt(se_log ** 2 + between ** 2)
             lo = _effect_to_response(link, log_mean - z * se_log)
             hi = _effect_to_response(link, log_mean + z * se_log)
             return lo, hi
@@ -195,44 +228,71 @@ class EffectExtractor:
         # Fisher information. dict with keys:
         #   'feat_windows' : list per member of (N, Lp1) scaled training windows
         #                    (or a single array reused for all members)
-        #   'mu_hat'       : list per member of (N,) fitted counts (or single array)
-        #   'ref'          : reference value for centering the estimand
+        #   'information_weight': list per member of (N,) GLM working weights
+        #   'mu_hat'            : optional fitted means retained for diagnostics
         # If None, se_source='laplace' will raise when interval() is called.
         self.laplace_inputs = laplace_inputs
 
     @classmethod
-    def with_laplace(cls, ensemble, prepared, link, centering):
-        """Build an extractor configured for se_source='laplace', self-assembling
+    def with_laplace(cls, ensemble, prepared, link, centering, laplace_terms=None,
+                     interval="laplace"):
+        """Build an extractor for a Laplace-based interval, self-assembling
         everything the joint last-layer Laplace needs from the trained `ensemble`
         and the `prepared` training data (PreparedData). Runners call this instead
         of hand-plumbing windows/mu/phi.
 
-        - per-member fitted counts mu_hat are computed by a forward pass
+        - per-member GLM information weights are computed by a forward pass:
+          w=mu for log/Poisson and w=mu(1-mu) for logit/Bernoulli;
         - phi (quasi-Poisson dispersion) is estimated by the mean Pearson statistic
-          across members, so the DLNAM interval carries the SAME dispersion notion
-          as the classical DLNM (fair like-for-like coverage)
+          across members for log/Poisson and fixed at one for logit/Bernoulli;
         - the full prepared input dict is passed (all terms), so the covariance is
           JOINT across every term and includes the intercept;
+        - if `laplace_terms` is supplied, nuisance terms not listed there are
+          conditioned on at their fitted values;
         - subnet mixing weights are conditioned on at their fitted values.
+
+        `interval` selects which Laplace-based interval to build: 'laplace' uses
+        the within-member last-layer variance alone, 'laplace+ensemble' adds the
+        between-member spread. It must be passed through rather than assumed,
+        since both need the same Laplace machinery and differ only in the
+        variance they report.
         """
+        if not needs_laplace(interval):
+            raise ValueError(
+                f"with_laplace requires a Laplace-based interval, got "
+                f"{interval!r}; use the EffectExtractor constructor instead"
+            )
         import torch as _t
         dev = next(ensemble[0].parameters()).device
         inp = {k: v.to(dev) for k, v in prepared.inputs.items()}
         y = np.asarray(prepared.y).reshape(-1)
-        mus, phis = [], []
+        information_weights, mus, phis = [], [], []
         with _t.no_grad():
             for m in ensemble:
                 mu = m(inp).detach().cpu().numpy().reshape(-1).clip(1e-9)
                 mus.append(mu)
-                dof = max(len(y) - 1, 1)
-                phis.append(float(np.sum((y - mu) ** 2 / mu) / dof))
+                if link.name == "log":
+                    information_weights.append(mu)
+                    dof = max(len(y) - 1, 1)
+                    phis.append(float(np.sum((y - mu) ** 2 / mu) / dof))
+                elif link.name == "logit":
+                    information_weights.append(np.clip(mu * (1.0 - mu), 1e-9, None))
+                    phis.append(1.0)
+                else:
+                    raise NotImplementedError(
+                        "last-layer Laplace currently supports log/Poisson and "
+                        "logit/Bernoulli links"
+                    )
         phi = float(np.mean(phis)) if phis else 1.0
-        phi = max(phi, 1.0)   # never below Poisson
+        if link.name == "log":
+            phi = max(phi, 1.0)   # never below Poisson
         li = {
             "prepared_inputs": [inp] * len(ensemble),
+            "information_weight": information_weights,
             "mu_hat": mus,
+            "laplace_terms": None if laplace_terms is None else tuple(laplace_terms),
         }
-        return cls(ensemble, link, IntervalUQ("laplace"), centering,
+        return cls(ensemble, link, IntervalUQ(interval), centering,
                    phi=phi, laplace_inputs=li)
 
     def _laplace_reference(self, term):
@@ -253,18 +313,23 @@ class EffectExtractor:
         """Laplace SE for either a cumulative/1D effect or a 2D surface."""
         if self.laplace_inputs is None:
             raise ValueError("se_source='laplace' requires laplace_inputs on "
-                             "the EffectExtractor (prepared_inputs, mu_hat)")
+                             "the EffectExtractor "
+                             "(prepared_inputs, information_weight)")
         from .laplace import LastLayerLaplace, pooled_evidence_lambda
         li = self.laplace_inputs
         prepared_inputs = li["prepared_inputs"]     # per-member dict or single
-        mu = li["mu_hat"]                           # per-member (N,) or single
+        information_weight = li.get("information_weight", li.get("mu_hat"))
+        include_terms = li.get("laplace_terms")
         M = len(self.ensemble)
 
         def _lap(i):
             pin = prepared_inputs[i] if isinstance(prepared_inputs, (list, tuple)) \
                 else prepared_inputs
-            m = mu[i] if isinstance(mu, (list, tuple)) else mu
-            return LastLayerLaplace(self.ensemble[i], pin, m, phi=self.phi)
+            w = (information_weight[i] if isinstance(information_weight, (list, tuple))
+                 else information_weight)
+            return LastLayerLaplace(
+                self.ensemble[i], pin, w, phi=self.phi, include_terms=include_terms
+            )
 
         laps = [_lap(i) for i in range(M)]
         # ONE lambda for the whole ensemble (= one estimator). It is re-estimated
@@ -322,7 +387,7 @@ class EffectExtractor:
         # se_source='laplace': JOINT last-layer Laplace (all terms + intercept),
         # computed per member and averaged as within-member sampling variance.
         laplace_se = None
-        if getattr(self.uq, "se_source", None) == "laplace":
+        if needs_laplace(getattr(self.uq, "se_source", None)):
             ref = self._laplace_reference(self.ensemble[0].term(term_name))
             laplace_se = self._laplace_se(term_name, grid_raw, ref, per_member)
 
@@ -363,7 +428,7 @@ class EffectExtractor:
         mean_resp = _effect_to_response(self.link, log_mean)
 
         laplace_se = None
-        if getattr(self.uq, "se_source", None) == "laplace":
+        if needs_laplace(getattr(self.uq, "se_source", None)):
             laplace_se = self._laplace_se(term_name, grid_raw, ref, per_member,
                                           surface=True)
 
