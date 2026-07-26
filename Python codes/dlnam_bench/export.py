@@ -33,9 +33,10 @@ def export_datasets(
     penalized_lag_df=None,
     tdlnm_burn: int = 5000,
     tdlnm_iter: int = 15000,
-    tdlnm_thin: int = 5,
+    tdlnm_thin: int = 10,
     tdlnm_attempts: int = 3,
-    tdlnm_exposure_splits: int = 20,
+    tdlnm_exposure_splits: int = 30,
+    tdlnm_trees: int = 20,
 ) -> str:
     """Write data/<scenario>_rep###.csv for every (scenario, replicate) and a
     manifest.json describing the grid, reference, lag, QAIC search space, and the
@@ -84,6 +85,7 @@ def export_datasets(
         "tdlnm_burn": int(tdlnm_burn), "tdlnm_iter": int(tdlnm_iter),
         "tdlnm_thin": int(tdlnm_thin), "tdlnm_attempts": int(tdlnm_attempts),
         "tdlnm_exposure_splits": int(tdlnm_exposure_splits),
+        "tdlnm_trees": int(tdlnm_trees),
         "n_obs": int(n_obs), "n_reps": int(n_reps), "base_seed": int(base_seed),
         "datasets": datasets,
     }

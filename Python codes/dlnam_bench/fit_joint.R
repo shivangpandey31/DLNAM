@@ -37,11 +37,21 @@ DEF_V <- 4L; DEF_L <- 4L                 # default df for the "held" exposures
 vk <- function(v, df) { r <- range(v, na.rm = TRUE)
   r[1] + diff(r) / df * seq_len(df - 1) }
 
+log_lag_ns <- function(df, lag = lag_max) {
+  df <- as.integer(df)
+  if (df < 2L) stop("natural-spline lag df must be at least 2")
+  if (df == 2L) return(list(fun = "ns", df = df))
+  list(
+    fun = "ns",
+    knots = logknots(lag, fun = "ns", df = df, intercept = TRUE)
+  )
+}
+
 # build an "ns" cross-basis for exposure e at given (vdf, ldf)
 cb_ns <- function(e, vdf, ldf)
   crossbasis(dat[[e]], lag = lag_max,
              argvar = list(fun = "ns", knots = vk(dat[[e]], vdf)),
-             arglag = list(fun = "ns", df = ldf))
+             arglag = log_lag_ns(ldf))
 
 ic_value <- function(model, kfac, k_cb) {           # Gasparrini eq.(13), k=vx*vl
   ll <- sum(dpois(model$y, model$fitted.values, log = TRUE))

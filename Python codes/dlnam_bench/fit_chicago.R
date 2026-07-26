@@ -54,12 +54,28 @@ vdf_g   <- as.integer(cfg$value_df_grid)
 ldf_g   <- as.integer(cfg$lag_df_grid)
 vdf_pen <- if (!is.null(cfg$penalized_value_df)) as.integer(unlist(cfg$penalized_value_df)) else max(vdf_g)
 ldf_pen <- if (!is.null(cfg$penalized_lag_df)) as.integer(unlist(cfg$penalized_lag_df)) else max(ldf_g)
+
+log_lag_ns <- function(df, lag = lag_max) {
+  df <- as.integer(df)
+  if (df < 2L) stop("natural-spline lag df must be at least 2")
+  if (df == 2L) return(list(fun = "ns", df = df))
+  list(
+    fun = "ns",
+    knots = logknots(lag, fun = "ns", df = df, intercept = TRUE)
+  )
+}
+
 tdlnm_burn <- if (!is.null(cfg$tdlnm_burn)) as.integer(unlist(cfg$tdlnm_burn)) else 5000L
 tdlnm_iter <- if (!is.null(cfg$tdlnm_iter)) as.integer(unlist(cfg$tdlnm_iter)) else 15000L
-tdlnm_thin <- if (!is.null(cfg$tdlnm_thin)) as.integer(unlist(cfg$tdlnm_thin)) else 5L
+tdlnm_thin <- if (!is.null(cfg$tdlnm_thin)) as.integer(unlist(cfg$tdlnm_thin)) else 10L
 tdlnm_attempts <- if (!is.null(cfg$tdlnm_attempts)) as.integer(unlist(cfg$tdlnm_attempts)) else 3L
 tdlnm_exposure_splits <- if (!is.null(cfg$tdlnm_exposure_splits)) {
   as.integer(unlist(cfg$tdlnm_exposure_splits))
+} else {
+  30L
+}
+tdlnm_trees <- if (!is.null(cfg$tdlnm_trees)) {
+  as.integer(unlist(cfg$tdlnm_trees))
 } else {
   20L
 }
@@ -71,6 +87,7 @@ tdlnm_settings <- list(
   n_thin = tdlnm_thin,
   n_attempts = tdlnm_attempts,
   exposure_splits = tdlnm_exposure_splits,
+  n_trees = tdlnm_trees,
   seed = tdlnm_seed
 )
 write_environment(file.path(bench, "r_environment.json"), methods, tdlnm_settings)
@@ -161,7 +178,7 @@ fit_ic <- function(ic) {
   for (vdf in vdf_g) for (ldf in ldf_g) {
     cb <- crossbasis(x, lag = lag_max,
                      argvar = list(fun = "ns", knots = vk(vdf)),
-                     arglag = list(fun = "ns", df = ldf))
+                     arglag = log_lag_ns(ldf))
     m <- glm(as.formula(paste("y ~ cb +", adj)), data = mf, family = quasipoisson(), na.action = na.omit)
     if (any(is.na(coef(m)))) next
     q <- tryCatch(ic_value(m, kfac, vdf * ldf), error = function(e) Inf)
@@ -170,7 +187,7 @@ fit_ic <- function(ic) {
   if (!is.finite(best$q)) stop(sprintf("no full-rank %s fit", ic))
   cb_temp <- crossbasis(x, lag = lag_max,
                         argvar = list(fun = "ns", knots = vk(best$vdf)),
-                        arglag = list(fun = "ns", df = best$ldf))
+                        arglag = log_lag_ns(best$ldf))
   m <- glm(as.formula(paste("y ~ cb_temp +", adj)), data = mf, family = quasipoisson(), na.action = na.omit)
   cp <- crosspred(cb_temp, m, at = grid, cen = ref, bylag = 1, ci.level = ci)
   write_out(cp, prefix_of(ic))
@@ -219,7 +236,11 @@ fit_tdlnm_once <- function(attempt) {
     dlm.type = "nonlinear",
     family = "gaussian",
     control.tdlnm = list(exposure.splits = tdlnm_exposure_splits),
-    control.mcmc = list(n.burn = tdlnm_burn, n.iter = tdlnm_iter, n.thin = tdlnm_thin),
+    # n.trees passed as a double: dlmtree's guard on these four is inverted
+    # (it aborts when all ARE valid positive integers) and its own default is a
+    # double, so this reproduces the working code path. See fit_dlnm.R.
+    control.mcmc = list(n.burn = tdlnm_burn, n.iter = tdlnm_iter,
+                        n.thin = tdlnm_thin, n.trees = as.numeric(tdlnm_trees)),
     control.diagnose = list(verbose = FALSE)
   )
 

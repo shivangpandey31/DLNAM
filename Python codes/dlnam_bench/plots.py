@@ -56,10 +56,14 @@ LABELS = {"DLNAM": "DLNAM", "QAIC": "DLNM (QAIC)",
           "TDLNM": "T-DLNM"}
 REGIONS = [("Total", "tot"), ("Interior", "int"), ("Boundary", "bnd")]
 NAMES = {
-    "smooth": "Smooth",
-    "delayed_peaks": "Delayed Peaks",
-    "localized_peak": "Localized Peak",
-    "tilting_threshold": "Tilting Threshold",
+    "dgp1": "DGP 1",
+    "dgp2": "DGP 2",
+    "dgp3": "DGP 3",
+    "dgp4": "DGP 4",
+    "smooth": "DGP 1",
+    "delayed_peaks": "DGP 2",
+    "localized_peak": "DGP 3",
+    "tilting_threshold": "DGP 4",
 }
 
 _RC = {
@@ -514,6 +518,127 @@ def composite(results, curves, scenarios=None, boundary=None,
                    handletextpad=0.5, handler_map={se_proxy: _WhiskerHandler()})
         fig.suptitle(title, fontsize=13, weight="bold", y=0.96)
     return fig
+
+
+def metric_composite(
+    results,
+    scenarios=None,
+    title="Simulation Study: Exposure-Lag Surface",
+):
+    """Render the error and coverage rows using the main composite style."""
+    scenarios = scenarios or list(results.keys())
+    present = [m for m in MODELS if m in next(iter(results.values()))]
+    n_s = len(scenarios)
+    y0 = np.arange(n_s)[::-1]
+    off = np.linspace(0.26, -0.26, len(present))
+    bh = 0.13
+
+    with plt.rc_context(_RC):
+        fig = plt.figure(figsize=(13.5, 6.7))
+        gs = fig.add_gridspec(
+            2,
+            12,
+            height_ratios=[1.15, 1.15],
+            hspace=0.52,
+            wspace=0.75,
+            left=0.07,
+            right=0.985,
+            top=0.88,
+            bottom=0.12,
+        )
+        axA = [fig.add_subplot(gs[0, 4 * i:4 * i + 4]) for i in range(3)]
+        axB = [fig.add_subplot(gs[1, 4 * i:4 * i + 4]) for i in range(3)]
+        for i in (1, 2):
+            axA[i].sharey(axA[0])
+            axB[i].sharey(axB[0])
+
+        xmax = max(
+            results[s][m][f"err_{rt}"]
+            + MC_SE_MULT * results[s][m].get(f"err_{rt}_se", 0.0)
+            for s in scenarios
+            for m in present
+            for _, rt in REGIONS
+        ) * 1.06
+        _draw_error_block(axA, results, scenarios, present, y0, off, bh, xmax)
+        _draw_coverage_block(axB, results, scenarios, present, y0, off)
+        for ax in (axA[0], axB[0]):
+            ax.set_yticks(y0)
+            ax.set_yticklabels([_nm(s) for s in scenarios])
+        for ax in (axA[1], axA[2], axB[1], axB[2]):
+            ax.tick_params(labelleft=False)
+
+        fig.canvas.draw()
+        for ax, letter, name in [
+            (axA[0], "A", "Error"),
+            (axB[0], "B", "Coverage"),
+        ]:
+            top = ax.get_position().y1
+            fig.text(
+                0.012,
+                top + 0.028,
+                f"{letter}  {name}",
+                fontsize=11,
+                weight="bold",
+                va="bottom",
+                ha="left",
+            )
+
+        model_h = [
+            Line2D(
+                [0],
+                [0],
+                marker=MARKERS[m],
+                color=COLOURS[m],
+                lw=0,
+                ms=6,
+                label=LABELS[m],
+            )
+            for m in present
+        ]
+        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="\u00b1 MCSE")
+        comp_h = [
+            Patch(facecolor="0.35", edgecolor="none", label="Bias\u00b2 (%)"),
+            Patch(
+                facecolor=_composite("#666666", VARIANCE_ALPHA + 0.25),
+                edgecolor="0.35",
+                lw=0,
+                hatch="//",
+                label="Variance (%)",
+            ),
+            se_proxy,
+        ]
+        legend_h = model_h + comp_h
+        fig.legend(
+            handles=legend_h,
+            loc="lower center",
+            ncol=len(legend_h),
+            bbox_to_anchor=(0.5, -0.018),
+            fontsize=7.8,
+            columnspacing=1.05,
+            handletextpad=0.5,
+            handler_map={se_proxy: _WhiskerHandler()},
+        )
+        fig.suptitle(title, fontsize=13, weight="bold", y=0.96)
+    return fig
+
+
+def save_metric_composite(
+    results,
+    outdir,
+    scenarios=None,
+    fmts=("pdf", "png"),
+    stem="mc_model_comparison_surface",
+    title="Simulation Study: Exposure-Lag Surface",
+):
+    """Write a standalone error-and-coverage composite."""
+    fig = metric_composite(results, scenarios=scenarios, title=title)
+    paths = []
+    for ext in fmts:
+        path = os.path.join(outdir, f"{stem}.{ext}")
+        fig.savefig(path, bbox_inches="tight", dpi=400)
+        paths.append(path)
+    plt.close(fig)
+    return paths
 
 
 # ===========================================================================

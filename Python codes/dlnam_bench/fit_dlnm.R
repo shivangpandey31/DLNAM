@@ -57,12 +57,28 @@ base_seed  <- if (!is.null(manifest$base_seed)) as.integer(manifest$base_seed) e
 vdf_grid   <- as.integer(unlist(manifest$value_df_grid))
 ldf_grid   <- as.integer(unlist(manifest$lag_df_grid))
 
+log_lag_ns <- function(df, lag = lag_max) {
+  df <- as.integer(df)
+  if (df < 2L) stop("natural-spline lag df must be at least 2")
+  if (df == 2L) return(list(fun = "ns", df = df))
+  list(
+    fun = "ns",
+    knots = logknots(lag, fun = "ns", df = df, intercept = TRUE)
+  )
+}
+
 tdlnm_burn <- if (!is.null(manifest$tdlnm_burn)) as.integer(unlist(manifest$tdlnm_burn)) else 5000L
 tdlnm_iter <- if (!is.null(manifest$tdlnm_iter)) as.integer(unlist(manifest$tdlnm_iter)) else 15000L
-tdlnm_thin <- if (!is.null(manifest$tdlnm_thin)) as.integer(unlist(manifest$tdlnm_thin)) else 5L
+tdlnm_thin <- if (!is.null(manifest$tdlnm_thin)) as.integer(unlist(manifest$tdlnm_thin)) else 10L
 tdlnm_attempts <- if (!is.null(manifest$tdlnm_attempts)) as.integer(unlist(manifest$tdlnm_attempts)) else 3L
 tdlnm_exposure_splits <- if (!is.null(manifest$tdlnm_exposure_splits)) {
   as.integer(unlist(manifest$tdlnm_exposure_splits))
+} else {
+  30L
+}
+# A = 20 trees, Mork and Wilson (2022) section 4.3.
+tdlnm_trees <- if (!is.null(manifest$tdlnm_trees)) {
+  as.integer(unlist(manifest$tdlnm_trees))
 } else {
   20L
 }
@@ -73,7 +89,8 @@ tdlnm_settings <- list(
   n_iter = tdlnm_iter,
   n_thin = tdlnm_thin,
   n_attempts = tdlnm_attempts,
-  exposure_splits = tdlnm_exposure_splits
+  exposure_splits = tdlnm_exposure_splits,
+  n_trees = tdlnm_trees
 )
 write_environment(file.path(out_dir, "r_environment.json"), methods, tdlnm_settings)
 if ("tdlnm" %in% methods) {
@@ -147,9 +164,13 @@ write_cp <- function(cp, rec, prefix) {
                     hi  = as.numeric(cp$allRRhigh))
   write.csv(cum, file.path(out_dir, prefixed_path(rec$cumulative, prefix)), row.names = FALSE)
   mat <- cp$matRRfit                      # rows = grid values, cols = lags
+  low <- cp$matRRlow
+  high <- cp$matRRhigh
   surf <- data.frame(value = rep(grid, times = ncol(mat)),
                      lag   = rep(0:(ncol(mat) - 1), each = nrow(mat)),
-                     rr    = as.numeric(mat))
+                     rr    = as.numeric(mat),
+                     lo    = as.numeric(low),
+                     hi    = as.numeric(high))
   write.csv(surf, file.path(out_dir, prefixed_path(rec$surface, prefix)), row.names = FALSE)
 }
 
@@ -193,7 +214,7 @@ fit_ic <- function(rec, x, y, want) {
     n_grid_fits <- n_grid_fits + 1L
     cb <- crossbasis(x, lag = lag_max,
                      argvar = list(fun = "ns", knots = var_knots(vdf)),
-                     arglag = list(fun = "ns", df = ldf))
+                     arglag = log_lag_ns(ldf))
     m <- glm(y ~ cb, family = quasipoisson(), na.action = na.omit)
     if (any(is.na(coef(m)))) next                 # rank-deficient -> skip
     qa <- tryCatch(fqaic(m, vdf * ldf), error = function(e) Inf)
@@ -211,7 +232,7 @@ fit_ic <- function(rec, x, y, want) {
     # refit FRESH with a stably-named cross-basis so crosspred matches coef names
     cb_temp <- crossbasis(x, lag = lag_max,
                           argvar = list(fun = "ns", knots = var_knots(b$vdf)),
-                          arglag = list(fun = "ns", df = b$ldf))
+                          arglag = log_lag_ns(b$ldf))
     fit <- glm(y ~ cb_temp, family = quasipoisson(), na.action = na.omit)
     cp  <- crosspred(cb_temp, fit, at = grid, cen = reference,
                      bylag = 1, ci.level = ci_level)
@@ -301,7 +322,16 @@ fit_tdlnm_once <- function(rec, attempt) {
     dlm.type = "nonlinear",
     family = "gaussian",
     control.tdlnm = list(exposure.splits = tdlnm_exposure_splits),
-    control.mcmc = list(n.burn = tdlnm_burn, n.iter = tdlnm_iter, n.thin = tdlnm_thin),
+    # n.trees is passed as a double, deliberately. dlmtree guards these with
+    #   if (all(sapply(list(n.trees, n.burn, n.iter, n.thin),
+    #                  function(i) is.integer(i) & i > 0))) stop(...)
+    # whose condition is inverted: it aborts when all four ARE valid positive
+    # integers. The package's own default n.trees = 20 is a double, so every
+    # call that leaves it alone slips past the guard. Passing 20L instead makes
+    # all four integers and trips it. Keeping the double reproduces the default
+    # code path exactly while still stating the tree count explicitly.
+    control.mcmc = list(n.burn = tdlnm_burn, n.iter = tdlnm_iter,
+                        n.thin = tdlnm_thin, n.trees = as.numeric(tdlnm_trees)),
     control.diagnose = list(verbose = FALSE)
   )
 

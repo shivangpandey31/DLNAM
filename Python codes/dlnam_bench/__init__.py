@@ -12,6 +12,6 @@ The R-side curves are then scored by the SAME StudyResult logic as the DLNAM, so
 the comparison differs only in the estimator, not in centering/grid/scoring.
 """
 from .export import export_datasets
-from .dlnm_io import load_dlnm_study
+from .dlnm_io import load_dlnm_study, load_dlnm_surface_study
 
-__all__ = ["export_datasets", "load_dlnm_study"]
+__all__ = ["export_datasets", "load_dlnm_study", "load_dlnm_surface_study"]
