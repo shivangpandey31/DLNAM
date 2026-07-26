@@ -1,4 +1,4 @@
-"""Data-generating scenarios for the DLNAM-vs-DLNM simulation study."""
+"""Data-generating processes for the DLNAM-vs-DLNM simulation study."""
 
 from __future__ import annotations
 
@@ -55,15 +55,15 @@ def norm_bump(lag, center, width):
     return w / (_sum_last(w) + 1e-12)
 
 
-def f_smooth(v, lag):
-    """Smooth asymmetric U; cumulative peak log-RR about 0.50-0.60."""
+def f_dgp1(v, lag):
+    """DGP 1."""
     cold = 0.50 * sig((15.0 - v) / 2.5)
     heat = 0.60 * sig((v - 25.0) / 1.5)
     return (cold + heat) * norm_decay(lag, 3.0)
 
 
-def f_delayed_peaks(v, lag):
-    """Sharp early heat effect and delayed cold effect with a mid-lag trough."""
+def f_dgp2(v, lag):
+    """DGP 2."""
     high = sig((v - 30.0) / 1.0)
     low = sig((12.0 - v) / 3.0)
     early = norm_bump(lag, 1.0, 1.5)
@@ -74,15 +74,15 @@ def f_delayed_peaks(v, lag):
     return heat + cold
 
 
-def f_localized_peak(v, lag):
-    """Narrow high-value peak plus broad cold arm; cumulative peak about 0.70."""
+def f_dgp3(v, lag):
+    """DGP 3."""
     heat = 0.70 * bump(v, 32.0, 2.0) * norm_bump(lag, 1.0, 1.5)
     cold = 0.40 * sig((10.0 - v) / 3.0) * norm_decay(lag, 4.0)
     return heat + cold
 
 
-def f_tilting_threshold(v, lag):
-    """Sharp high/low thresholds whose dominant lag timing differs by value."""
+def f_dgp4(v, lag):
+    """DGP 4."""
     heat = 0.70 * sig((v - 28.0) / 1.0) * norm_bump(lag, 1.0, 1.0)
     cold = 0.60 * sig((12.0 - v) / 1.0) * norm_bump(lag, 9.0, 1.5)
     return heat + cold
@@ -102,15 +102,37 @@ def gp_weather(T, rng):
     return seasonal + u
 
 
+SCENARIO_KEYS = ("dgp1", "dgp2", "dgp3", "dgp4")
+
+SCENARIO_DISPLAY_NAMES = {
+    "dgp1": "DGP 1",
+    "dgp2": "DGP 2",
+    "dgp3": "DGP 3",
+    "dgp4": "DGP 4",
+}
+
+LEGACY_SCENARIO_ALIASES = {
+    "smooth": "dgp1",
+    "delayed_peaks": "dgp2",
+    "localized_peak": "dgp3",
+    "tilting_threshold": "dgp4",
+}
+
 SURFACE_FUNCTIONS = {
-    "smooth": f_smooth,
-    "delayed_peaks": f_delayed_peaks,
-    "localized_peak": f_localized_peak,
-    "tilting_threshold": f_tilting_threshold,
+    "dgp1": f_dgp1,
+    "dgp2": f_dgp2,
+    "dgp3": f_dgp3,
+    "dgp4": f_dgp4,
 }
 
 
+def canonical_scenario(name: str) -> str:
+    """Return the canonical DGP key, accepting legacy result-file names."""
+    return LEGACY_SCENARIO_ALIASES.get(name, name)
+
+
 def _build(name, lag_max=LAG_MAX):
+    name = canonical_scenario(name)
     if name not in SURFACE_FUNCTIONS:
         valid = ", ".join(SURFACE_FUNCTIONS)
         raise KeyError(f"unknown simulation scenario {name!r}; expected one of: {valid}")
@@ -133,7 +155,7 @@ def _build(name, lag_max=LAG_MAX):
 
 
 def scenarios(lag_max=LAG_MAX) -> dict:
-    return {name: _build(name, lag_max) for name in SURFACE_FUNCTIONS}
+    return {name: _build(name, lag_max) for name in SCENARIO_KEYS}
 
 
 __all__ = [
@@ -145,8 +167,16 @@ __all__ = [
     "INTERCEPT",
     "LAG_MAX",
     "REFERENCE",
+    "SCENARIO_KEYS",
+    "SCENARIO_DISPLAY_NAMES",
+    "LEGACY_SCENARIO_ALIASES",
     "SURFACE_FUNCTIONS",
+    "canonical_scenario",
     "VALUE_RANGE",
+    "f_dgp1",
+    "f_dgp2",
+    "f_dgp3",
+    "f_dgp4",
     "gp_weather",
     "scenarios",
 ]

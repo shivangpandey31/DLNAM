@@ -27,12 +27,12 @@ from dlnam_sim.scenarios import (
 )
 
 
-EXPOSURES = ("smooth", "delayed_peaks", "localized_peak", "tilting_threshold")
+EXPOSURES = ("dgp1", "dgp2", "dgp3", "dgp4")
 PHASES = {
-    "smooth": 0.0,
-    "delayed_peaks": np.pi / 6.0,
-    "localized_peak": np.pi / 3.0,
-    "tilting_threshold": np.pi / 2.0,
+    "dgp1": 0.0,
+    "dgp2": np.pi / 6.0,
+    "dgp3": np.pi / 3.0,
+    "dgp4": np.pi / 2.0,
 }
 
 EFFECT_SCALE = 1.0

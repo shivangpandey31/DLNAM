@@ -74,7 +74,7 @@ class FunctionTerm(AdditiveTerm):
         return self.fn(xx).view(-1, 1)
 
     # --- truth curve ----------------------------------------------------
-    def default_grid(self, n: int = 200) -> np.ndarray:
+    def default_grid(self, n: int = 201) -> np.ndarray:
         if self.kind == "categorical":
             return np.arange(self.num_categories, dtype=float)
         lo, hi = self._value_range

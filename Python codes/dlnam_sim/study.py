@@ -16,7 +16,8 @@ from typing import Optional
 
 import numpy as np
 
-from dlnam import Trainer, DataProcessor, EffectExtractor, IntervalUQ, make_link
+from dlnam import (Trainer, DataProcessor, EffectExtractor, IntervalUQ,
+                   make_link, needs_laplace)
 from dlnam.config import ModelConfig, TrainConfig
 from dlnam.terms.base import Centering
 
@@ -102,13 +103,84 @@ class StudyResult:
         se = np.sqrt((R - 1) / R * np.sum((loo - loo.mean()) ** 2))
         return v, float(se)
 
+    def coverage_conditional_mean_se(self, term, mask=None, z=1.959963984540054):
+        """Coverage of the WITHIN-member Laplace interval alone.
+
+        The shipped interval combines the last-layer Laplace variance with the
+        between-member spread. This recomputes coverage from the Laplace term on
+        its own, i.e. conditioning on the learned representation and discarding
+        the uncertainty in it, so the contribution of the representation term is
+        readable as the difference between this and the reported coverage.
+        Returns (nan, nan) when the required per-replicate quantities were not
+        retained.
+        """
+        try:
+            log_mean = self._stack(term, "log_mean")
+        except (KeyError, TypeError):
+            return float("nan"), float("nan")
+        comps = [r.laplace_components for r in self.replicates]
+        if any(c is None or term not in c for c in comps):
+            return float("nan"), float("nan")
+        se = np.array([np.asarray(c[term]["se_total"]).reshape(-1) for c in comps])
+        truth = np.log(self.truth[term])[None, :]
+        covered = (truth >= log_mean - z * se) & (truth <= log_mean + z * se)
+        m = slice(None) if mask is None else mask
+        per_rep = covered[:, m].mean(axis=1)
+        R = len(per_rep)
+        se_mc = float(per_rep.std(ddof=1) / np.sqrt(R)) if R > 1 else 0.0
+        return float(per_rep.mean()), se_mc
+
+    def coverage_inflated_mean_se(self, term, mask=None, z=1.959963984540054):
+        """Coverage when the between-member spread is added to the Laplace variance.
+
+        The reported last-layer intervals condition on the learned representation,
+        so they omit its contribution to uncertainty. Ensemble members differ in
+        exactly that representation, so their pointwise spread is an observable
+        proxy for the omitted term, and this recomputes coverage with
+
+            se^2 = (within-member Laplace se)^2 + (between-member sd)^2 .
+
+        It is a diagnostic, not an alternative estimator: members share one data
+        set, so their spread reflects initialisation variability and captures only
+        part of the sampling variability of the representation. The result is
+        therefore a lower bound on how much of the coverage shortfall omitted
+        representation uncertainty could explain. Returns (nan, nan) when the
+        required per-replicate quantities were not retained.
+        """
+        try:
+            log_mean = self._stack(term, "log_mean")
+            between = self._stack(term, "log_se_between")
+        except (KeyError, TypeError):
+            return float("nan"), float("nan")
+        comps = [r.laplace_components for r in self.replicates]
+        if any(c is None or term not in c for c in comps):
+            return float("nan"), float("nan")
+        within = np.array([np.asarray(c[term]["se_total"]).reshape(-1) for c in comps])
+        se = np.sqrt(within ** 2 + between ** 2)
+        truth = np.log(self.truth[term])[None, :]
+        covered = (truth >= log_mean - z * se) & (truth <= log_mean + z * se)
+        m = slice(None) if mask is None else mask
+        per_rep = covered[:, m].mean(axis=1)
+        R = len(per_rep)
+        se_mc = float(per_rep.std(ddof=1) / np.sqrt(R)) if R > 1 else 0.0
+        return float(per_rep.mean()), se_mc
+
     def coverage_mean_se(self, term, mask=None):
-        # binomial SE of a proportion over R reps: sqrt(p(1-p)/R)
-        p_pp = self.coverage(term)                                     # (G,)
-        R = self._stack(term, "mean").shape[0]
-        se_pp = np.sqrt(p_pp * (1 - p_pp) / R)
-        m = np.ones(len(p_pp), bool) if mask is None else np.asarray(mask, bool)
-        return float(p_pp[m].mean()), float(se_pp[m].mean())
+        """Mean pointwise coverage and its replicate-level Monte Carlo SE.
+
+        Each replicate contributes its mean coverage over the selected grid.
+        Taking the SE across these replicate-level summaries preserves dependence
+        between grid points within a simulated dataset.
+        """
+        lo, hi = self._stack(term, "lo"), self._stack(term, "hi")       # (R,G)
+        truth = self.truth[term][None, :]
+        covered = (truth >= lo) & (truth <= hi)
+        m = self._mask(term, mask)
+        coverage_rep = covered[:, m].mean(axis=1)
+        R = len(coverage_rep)
+        coverage = float(coverage_rep.mean())
+        se = float(coverage_rep.std(ddof=1) / np.sqrt(R)) if R > 1 else 0.0
+        return coverage, se
 
     def width_mean(self, term, mask=None, log=True):
         """Mean interval WIDTH, averaged over grid and replicates. Diagnosable at
@@ -251,9 +323,10 @@ class MonteCarloStudy:
         trainer.fit(prepared.inputs, prepared.y)
 
         link = make_link(self.model_config.link)
-        if self.se_source == "laplace":
+        if needs_laplace(self.se_source):
             ext = EffectExtractor.with_laplace(
-                trainer.ensemble, prepared, link, self.centering)
+                trainer.ensemble, prepared, link, self.centering,
+                interval=self.se_source)
         else:
             ext = EffectExtractor(trainer.ensemble, link,
                                   IntervalUQ(self.se_source), self.centering)
