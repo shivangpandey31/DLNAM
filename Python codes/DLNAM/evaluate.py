@@ -94,6 +94,16 @@ class PerformanceEvaluator:
                 out["AUC"] = float("nan")
         return out
 
+    @staticmethod
+    def save_csv(metrics: dict, path) -> None:
+        """Save one evaluation dictionary as a one-row CSV."""
+        import pandas as pd
+        from pathlib import Path
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame([metrics]).to_csv(path, index=False)
+
     def report(self, m: dict, *, detailed: bool = False) -> None:
         print("Fit diagnostics")
         print(f"  deviance      {m['Deviance']:.1f}  (null {m['Null_Deviance']:.1f})")

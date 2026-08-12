@@ -190,17 +190,39 @@ class SurfaceTerm(AdditiveTerm):
     # --- scaling (set from data once, outside the optimiser) -------------
     def fit_scaling(self, raw_values: np.ndarray) -> None:
         raw = np.asarray(raw_values, dtype=float)
+
         if self.scaling == "zscore":
             self._loc = float(raw.mean())
             self._scale = float(raw.std() + 1e-12)
-        else:  # minmax -> [0, 1]
+
+        elif self.scaling == "none":
+            self._loc = 0.0
+            self._scale = 1.0
+
+        elif self.scaling == "minmax":
             self._loc = float(raw.min())
             self._scale = float(raw.max() - raw.min() + 1e-12)
-        self._value_range = (float(raw.min()), float(raw.max()))
+
+        else:
+            raise ValueError(
+                f"Unknown scaling method: {self.scaling}"
+            )
+
+        self._value_range = (
+            float(raw.min()),
+            float(raw.max())
+        )
+
         self._data_median = float(np.median(raw))
 
     def _to_scaled(self, raw: np.ndarray) -> np.ndarray:
-        return (np.asarray(raw, dtype=float) - self._loc) / self._scale
+
+        raw = np.asarray(raw, dtype=float)
+
+        if self.scaling == "none":
+            return raw
+
+        return (raw - self._loc) / self._scale
 
     # --- mixing ----------------------------------------------------------
     def _mix(self) -> torch.Tensor:

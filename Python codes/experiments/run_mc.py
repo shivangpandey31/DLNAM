@@ -53,7 +53,7 @@ from experiment_io import load_json_if_exists, results_dir, save_result_bundle
 
 SCENARIOS = ["dgp1", "dgp2", "dgp3", "dgp4"]
 LAG = 14
-N_REPS = 10
+N_REPS = 100
 N_OBS = 5000
 EPOCHS = 2500
 N_ENSEMBLE = 3

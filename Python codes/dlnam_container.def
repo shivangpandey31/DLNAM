@@ -1,0 +1,347 @@
+Bootstrap: localimage
+From: /nobackup/proj/disk/k9_climes/personal/shipan/containers/pytorch251_base.sif
+
+%labels
+    Author Shivang Pandey
+    Project DLNAM
+    BaseImage pytorch/pytorch:2.5.1-cuda11.8-cudnn9-runtime
+    PyTorch 2.5.1
+    CUDA 11.8
+    Purpose DLNAM simulations plus DLNM benchmark comparisons (Python + R)
+
+%environment
+    export PYTHONNOUSERSITE=1
+    export PYTHONUNBUFFERED=1
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    export PIP_ROOT_USER_ACTION=ignore
+    export MPLBACKEND=Agg
+    export MPLCONFIGDIR=/tmp/matplotlib
+    export XDG_CACHE_HOME=/tmp/.cache
+
+%post
+    set -eux
+
+    export DEBIAN_FRONTEND=noninteractive
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    export PIP_ROOT_USER_ACTION=ignore
+
+    # Limit parallel compilation during the container build.
+    export MAKEFLAGS="-j2"
+
+    # Use an isolated temporary directory during the build.
+    BUILD_TMPDIR="/var/tmp/dlnam-build"
+
+    mkdir -p "$BUILD_TMPDIR"
+    chmod 1777 "$BUILD_TMPDIR"
+
+    export TMPDIR="$BUILD_TMPDIR"
+    export TMP="$BUILD_TMPDIR"
+    export TEMP="$BUILD_TMPDIR"
+    # ------------------------------------------------------------
+    # Detect the Ubuntu release used by the PyTorch base image
+    # ------------------------------------------------------------
+    . /etc/os-release
+
+    UBUNTU_CODENAME="${VERSION_CODENAME:-}"
+
+    case "$UBUNTU_CODENAME" in
+        jammy|noble|resolute)
+            echo "Detected supported Ubuntu release: $UBUNTU_CODENAME"
+            ;;
+        *)
+            echo "ERROR: Unsupported or unknown Ubuntu release:"
+            cat /etc/os-release
+            exit 1
+            ;;
+    esac
+
+    # ------------------------------------------------------------
+    # System utilities and compiled-library dependencies
+    # ------------------------------------------------------------
+    apt-get update
+
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        wget \
+        gnupg \
+        dirmngr \
+        git \
+        nano \
+        htop \
+        tree \
+        unzip \
+        zip \
+        build-essential \
+        gfortran \
+        pkg-config \
+        cmake \
+        ninja-build \
+        libnlopt-dev \
+        libgl1 \
+        libglib2.0-0 \
+        libssl-dev \
+        libcurl4-openssl-dev \
+        libxml2-dev
+
+    # ------------------------------------------------------------
+    # Install a current R version from the official CRAN repository
+    # ------------------------------------------------------------
+    wget -qO /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc \
+        https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc
+
+    printf \
+        "deb https://cloud.r-project.org/bin/linux/ubuntu %s-cran40/\n" \
+        "$UBUNTU_CODENAME" \
+        > /etc/apt/sources.list.d/cran-r.list
+
+    apt-get update
+
+    apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-dev \
+        r-recommended
+
+    echo "Installed R version:"
+    R --version
+
+    # Fail immediately if an unsuitable R version was installed.
+    Rscript --vanilla -e \
+        'if (getRversion() < numeric_version("4.4.0")) stop("R >= 4.4.0 is required")'
+
+    # ------------------------------------------------------------
+    # Python packaging tools
+    # ------------------------------------------------------------
+    python -m pip install --no-cache-dir --upgrade \
+        "pip<27" \
+        setuptools \
+        wheel
+
+    # ------------------------------------------------------------
+    # Match the verified PyTorch 2.5.1 / CUDA 11.8 base.
+    # --no-deps prevents replacing the working torch build.
+    # ------------------------------------------------------------
+    python -m pip install --no-cache-dir --no-deps \
+        --index-url https://download.pytorch.org/whl/cu118 \
+        torchvision==0.20.1 \
+        torchaudio==2.5.1
+
+    # ------------------------------------------------------------
+    # Python dependencies used by DLNAM and plotting
+    # ------------------------------------------------------------
+    python -m pip install --no-cache-dir \
+        "numpy<3" \
+        "scipy<2" \
+        "pandas<4" \
+        "scikit-learn<2" \
+        "statsmodels<1" \
+        "matplotlib<4" \
+        "seaborn<1" \
+        tqdm \
+        joblib \
+        pyarrow \
+        fastparquet \
+        openpyxl \
+        xlrd \
+        ipython \
+        jupyterlab \
+        notebook
+
+    # ------------------------------------------------------------
+    # Fix the incompatible pip-managed ninja package inherited
+    # from the PyTorch base image.
+    #
+    # /usr/bin/ninja remains available through apt ninja-build.
+    # ------------------------------------------------------------
+    python -m pip uninstall -y ninja || true
+
+    echo "System Ninja:"
+    command -v ninja
+    ninja --version
+
+    # ------------------------------------------------------------
+    # R dependencies for dlnam_bench/fit_*.R
+    # ------------------------------------------------------------
+    Rscript --vanilla - <<'RS'
+options(
+    repos = c(CRAN = "https://cloud.r-project.org"),
+    timeout = 1200
+)
+
+minimum_r <- numeric_version("4.4.0")
+
+if (getRversion() < minimum_r) {
+    stop(
+        "R >= 4.4.0 is required, but R ",
+        getRversion(),
+        " is installed."
+    )
+}
+
+# mgcv and Matrix are normally installed through r-recommended.
+# The remaining packages and their dependencies are installed here.
+packages_to_install <- c(
+    "jsonlite",
+    "dlnm",
+    "glmmTMB"
+)
+
+install.packages(
+    packages_to_install,
+    dependencies = TRUE,
+    Ncpus = 2L
+)
+
+required_packages <- c(
+    "Matrix",
+    "jsonlite",
+    "mgcv",
+    "dlnm",
+    "lme4",
+    "glmmTMB"
+)
+
+available <- vapply(
+    required_packages,
+    requireNamespace,
+    logical(1),
+    quietly = TRUE
+)
+
+if (!all(available)) {
+    stop(
+        "Missing R packages after installation: ",
+        paste(names(available)[!available], collapse = ", ")
+    )
+}
+
+if (packageVersion("Matrix") < numeric_version("1.5.0")) {
+    stop(
+        "Matrix >= 1.5.0 is required, but version ",
+        packageVersion("Matrix"),
+        " is installed."
+    )
+}
+
+cat("\nInstalled R package versions:\n")
+
+for (package in required_packages) {
+    cat(
+        sprintf(
+            "%-12s %s\n",
+            package,
+            as.character(packageVersion(package))
+        )
+    )
+}
+
+cat("\nR package validation passed.\n")
+RS
+
+    # ------------------------------------------------------------
+    # Validate the Python dependency graph
+    # ------------------------------------------------------------
+    python -m pip check
+
+    # ------------------------------------------------------------
+    # CPU-side Python import validation
+    # ------------------------------------------------------------
+    python - <<'PY'
+import importlib
+import sys
+
+packages = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "numpy",
+    "scipy",
+    "pandas",
+    "sklearn",
+    "statsmodels",
+    "matplotlib",
+    "seaborn",
+    "tqdm",
+    "joblib",
+    "pyarrow",
+    "fastparquet",
+    "openpyxl",
+    "xlrd",
+]
+
+failed = []
+
+for name in packages:
+    try:
+        module = importlib.import_module(name)
+        version = getattr(module, "__version__", "version not exposed")
+        print(f"{name:12s} OK  {version}")
+    except Exception as exc:
+        failed.append((name, repr(exc)))
+        print(f"{name:12s} FAILED  {exc!r}")
+
+if failed:
+    raise RuntimeError(f"Import failures: {failed}")
+
+import torch
+
+print("Python:", sys.version)
+print("PyTorch:", torch.__version__)
+print("CUDA build:", torch.version.cuda)
+print("Build-stage CUDA available:", torch.cuda.is_available())
+print("All requested Python package imports passed.")
+PY
+
+    # Remove package-manager caches only after all installations.
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+    rm -rf /root/.cache
+    
+    # Remove only the temporary directory created by this build.
+    rm -rf "$BUILD_TMPDIR"
+%test
+    python -m pip check
+
+    python - <<'PY'
+import sys
+import torch
+import torchvision
+import torchaudio
+import numpy
+import scipy
+import pandas
+import matplotlib
+
+print("Python:", sys.version)
+print("PyTorch:", torch.__version__)
+print("Torchvision:", torchvision.__version__)
+print("Torchaudio:", torchaudio.__version__)
+print("CUDA build:", torch.version.cuda)
+print("NumPy:", numpy.__version__)
+print("SciPy:", scipy.__version__)
+print("Pandas:", pandas.__version__)
+print("Matplotlib:", matplotlib.__version__)
+print("Container Python test passed.")
+PY
+
+    Rscript --vanilla - <<'RS'
+stopifnot(getRversion() >= numeric_version("4.4.0"))
+stopifnot(packageVersion("Matrix") >= numeric_version("1.5.0"))
+
+library(Matrix)
+library(jsonlite)
+library(mgcv)
+library(dlnm)
+library(lme4)
+library(glmmTMB)
+
+cat("R:", as.character(getRversion()), "\n")
+cat("Matrix:", as.character(packageVersion("Matrix")), "\n")
+cat("mgcv:", as.character(packageVersion("mgcv")), "\n")
+cat("dlnm:", as.character(packageVersion("dlnm")), "\n")
+cat("lme4:", as.character(packageVersion("lme4")), "\n")
+cat("glmmTMB:", as.character(packageVersion("glmmTMB")), "\n")
+cat("Container R test passed.\n")
+RS
+
+%runscript
+    exec python "$@"

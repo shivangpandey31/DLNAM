@@ -12,7 +12,7 @@ __version__ = "0.1.0"
 from .config import (
     ActivationSpec, TransformSpec, SoftCapSpec, ExUSpec, LayerSpec,
     TermSpec, InitSpec, SurfaceTermSpec, SmoothTermSpec, TrendTermSpec,
-    CategoricalTermSpec, ModelConfig, TrainConfig, broadcast_terms,
+    CategoricalTermSpec, ModelConfig, TrainConfig, categorical_terms_from_configs, broadcast_terms,
 )
 from .links import Link, LogLink, LogitLink, IdentityLink, make_link
 from .terms.base import AdditiveTerm, Centering, EffectCurve
@@ -20,7 +20,7 @@ from .terms.surface import SurfaceTerm
 from .terms.smooth import SmoothTerm, TrendTerm
 from .terms.categorical import CategoricalTerm
 from .model import DLNAM
-from .train import Trainer
+from .train import Trainer, print_gpu_stats
 from .data import DataProcessor, PreparedData
 from .evaluate import PerformanceEvaluator
 from .visualize import ResultVisualizer
@@ -34,9 +34,9 @@ __all__ = [
     "__version__",
     "ActivationSpec", "TransformSpec", "SoftCapSpec", "ExUSpec", "LayerSpec",
     "TermSpec", "InitSpec", "SurfaceTermSpec", "SmoothTermSpec", "TrendTermSpec",
-    "CategoricalTermSpec", "ModelConfig", "TrainConfig", "broadcast_terms",
+    "CategoricalTermSpec", "ModelConfig", "TrainConfig", "categorical_terms_from_configs", "broadcast_terms",
     "Link", "LogLink", "LogitLink", "IdentityLink", "make_link",
-    "AdditiveTerm", "Centering", "EffectCurve", "DLNAM", "Trainer", "DataProcessor", "PreparedData", "PerformanceEvaluator", "ResultVisualizer",
+    "AdditiveTerm", "Centering", "EffectCurve", "DLNAM", "Trainer", "print_gpu_stats", "DataProcessor", "PreparedData", "PerformanceEvaluator", "ResultVisualizer",
     "SurfaceTerm", "SmoothTerm", "TrendTerm", "CategoricalTerm",
     "EffectEstimate", "EffectExtractor", "UncertaintyMethod",
     "IntervalUQ", "ConfidenceIntervalUQ", "PredictionIntervalUQ",

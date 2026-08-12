@@ -15,16 +15,28 @@ Dispatch by term type:
 
 from __future__ import annotations
 
+import os
+import re
+import sys
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import pandas as pd
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
-from .inference import EffectExtractor, EffectEstimate
-from .terms.surface import SurfaceTerm
-from .terms.smooth import TrendTerm
-from .terms.categorical import CategoricalTerm
+try:
+    from .inference import EffectExtractor, EffectEstimate, needs_laplace
+    from .terms.surface import SurfaceTerm
+    from .terms.smooth import TrendTerm
+    from .terms.categorical import CategoricalTerm
+except ImportError:  # pragma: no cover - script execution fallback
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from DLNAM.inference import EffectExtractor, EffectEstimate, needs_laplace
+    from DLNAM.terms.surface import SurfaceTerm
+    from DLNAM.terms.smooth import TrendTerm
+    from DLNAM.terms.categorical import CategoricalTerm
 
 
 SURFACE_CMAP_COLOURS = ["#17151C", "#33283B", "#403249", "#FFFFFF",
@@ -123,14 +135,26 @@ def _surface_cmap(name="dlnam_rr_surface", colours=None, stops=None, n=2048):
 
 class ResultVisualizer:
     def __init__(self, ensemble, link, uq, centering, distribution="poisson",
-                 labels=None, trainer=None):
+                 labels=None, trainer=None, prepared=None, laplace_terms=None):
         self.ensemble = ensemble
         self.link = link
         self.centering = centering
         self.distribution = distribution
         self.labels = labels or {}
         self.trainer = trainer
-        self.ext = EffectExtractor(ensemble, link, uq, centering)
+        if needs_laplace(getattr(uq, "se_source", None)):
+            if prepared is None:
+                raise ValueError(
+                    "Laplace intervals need prepared training data; pass `prepared=` "
+                    "to ResultVisualizer or use a non-Laplace interval"
+                )
+            self.ext = EffectExtractor.with_laplace(
+                ensemble, prepared, link, centering,
+                laplace_terms=laplace_terms,
+                interval=getattr(uq, "interval_type", "laplace"),
+            )
+        else:
+            self.ext = EffectExtractor(ensemble, link, uq, centering)
 
     def _label(self, name):
         return self.labels.get(name, name)
@@ -308,3 +332,133 @@ class ResultVisualizer:
         if standalone:
             plt.tight_layout(); plt.show()
         return ax
+
+    # --- CSV export ------------------------------------------------------
+    def save_results_csv(self, output_dir, grids=None, *, alpha: float = 0.05,
+                         include_surfaces: bool = True, terms=None,
+                         include_training_loss: bool = False,
+                         include_monitor: bool = False,
+                         include_fit_summary: bool = False):
+        """Save numerical effect results so figures can be recreated later.
+
+        Files are deliberately term-specific and tidy rather than serialising a
+        matplotlib object. Use ``terms=[...]`` to save only quantities needed for
+        later plotting. Surface terms can additionally write ``<term>_surface.csv``.
+        Training/monitor/fit-summary CSVs are opt-in because they are not needed
+        to recreate exposure-response or lag-surface figures.
+
+        Returns
+        -------
+        dict
+            Logical result name -> written Path.
+        """
+        outdir = Path(output_dir)
+        outdir.mkdir(parents=True, exist_ok=True)
+        grids = grids or {}
+        written = {}
+
+        def safe_name(name):
+            return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(name)).strip("_") or "term"
+
+        selected = None if terms is None else set(terms)
+        if selected is not None:
+            unknown = selected.difference(self.ensemble[0].terms.keys())
+            if unknown:
+                raise KeyError(f"unknown result terms requested: {sorted(unknown)}")
+
+        for name, term in self.ensemble[0].terms.items():
+            if selected is not None and name not in selected:
+                continue
+            grid = grids.get(name)
+            est = self.ext.extract(name, grid_raw=grid, alpha=alpha)
+            n = len(est.grid_raw)
+            frame = pd.DataFrame({
+                "term": [name] * n,
+                "term_type": [type(term).__name__] * n,
+                "grid_raw": est.grid_raw,
+                "effect": est.mean,
+                "lo": np.nan if est.lo is None else est.lo,
+                "hi": np.nan if est.hi is None else est.hi,
+                "log_effect": np.nan if est.log_mean is None else est.log_mean,
+                "log_se": np.nan if est.log_se is None else est.log_se,
+                "ci_label": [est.ci_label] * n,
+            })
+            if isinstance(term, CategoricalTerm):
+                frame.insert(3, "category", list(term.order))
+
+            effect_path = outdir / f"{safe_name(name)}_effect.csv"
+            frame.to_csv(effect_path, index=False)
+            written[f"{name}:effect"] = effect_path
+
+            if include_surfaces and isinstance(term, SurfaceTerm):
+                surface_grid = est.grid_raw if grid is None else np.asarray(grid, dtype=float)
+                try:
+                    surf = self.ext.extract_surface(name, grid_raw=surface_grid, alpha=alpha)
+                    mean = surf.mean
+                    lo = surf.lo
+                    hi = surf.hi
+                    log_mean = surf.log_mean
+                    log_se = surf.log_se
+                    ci_label = surf.ci_label
+                except ValueError as exc:
+                    # Some UQ methods (notably prediction intervals) are defined
+                    # for cumulative outcome predictions but not per-lag effect
+                    # surfaces. Still export the mean surface for later plotting.
+                    ref = (self.centering.value
+                           if self.centering.method in ("reference", "custom")
+                           else term._data_median)
+                    per_member = np.asarray([
+                        m.term(name).per_lag_log_rr(surface_grid, ref)
+                        for m in self.ensemble
+                    ])
+                    log_mean = per_member.mean(axis=0)
+                    log_se = per_member.std(axis=0)
+                    if getattr(self.link, "name", None) in ("log", "logit"):
+                        mean = np.exp(log_mean)
+                    else:
+                        mean = log_mean
+                    lo = hi = None
+                    ci_label = f"not exported per lag: {exc}"
+
+                n_lag, n_grid = mean.shape
+                surface_frame = pd.DataFrame({
+                    "term": [name] * (n_lag * n_grid),
+                    "lag": np.repeat(np.arange(n_lag), n_grid),
+                    "grid_raw": np.tile(surface_grid, n_lag),
+                    "effect": mean.reshape(-1),
+                    "lo": np.nan if lo is None else np.asarray(lo).reshape(-1),
+                    "hi": np.nan if hi is None else np.asarray(hi).reshape(-1),
+                    "log_effect": np.asarray(log_mean).reshape(-1),
+                    "log_se": np.asarray(log_se).reshape(-1),
+                    "ci_label": [ci_label] * (n_lag * n_grid),
+                })
+                surface_path = outdir / f"{safe_name(name)}_surface.csv"
+                surface_frame.to_csv(surface_path, index=False)
+                written[f"{name}:surface"] = surface_path
+
+        if self.trainer is not None:
+            if include_training_loss and getattr(self.trainer, "loss_history", None):
+                rows = []
+                for member, hist in enumerate(self.trainer.loss_history):
+                    rows.extend(
+                        {"ensemble_member": member, "epoch": epoch, "objective": loss}
+                        for epoch, loss in hist
+                    )
+                path = outdir / "training_loss.csv"
+                pd.DataFrame(rows).to_csv(path, index=False)
+                written["training_loss"] = path
+
+            if include_monitor and getattr(self.trainer, "monitor_history", None):
+                path = outdir / "early_stopping_monitor.csv"
+                pd.DataFrame(
+                    self.trainer.monitor_history, columns=["epoch", "objective"]
+                ).to_csv(path, index=False)
+                written["monitor_history"] = path
+
+            if include_fit_summary and getattr(self.trainer, "fit_summary", None):
+                path = outdir / "fit_summary.csv"
+                pd.DataFrame([self.trainer.fit_summary]).to_csv(path, index=False)
+                written["fit_summary"] = path
+
+        return written
+

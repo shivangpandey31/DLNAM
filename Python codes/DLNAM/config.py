@@ -216,10 +216,25 @@ class TermSpec:
 
 @dataclass(frozen=True)
 class SurfaceTermSpec(TermSpec):
-    """Exposure value x lag surface (the DLNM piece)."""
+
     lag_max: int = 30
-    # ExU for the value/lag input layer; surface_strategy lives inside it.
-    input_exu: Optional[ExUSpec] = field(default_factory=ExUSpec)
+
+    input_exu: Optional[ExUSpec] = field(
+        default_factory=ExUSpec
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.lag_max < 0:
+            raise ValueError(
+                "lag_max must be >= 0"
+            )
+
+        if len(self.layers) == 0:
+            raise ValueError(
+                "SurfaceTermSpec requires at least one LayerSpec"
+            )
 
 
 @dataclass(frozen=True)
@@ -238,10 +253,106 @@ class TrendTermSpec(TermSpec):
 
 @dataclass(frozen=True)
 class CategoricalTermSpec(TermSpec):
-    """Categorical term. hidden==() -> pure embedding (lookup table)."""
+    """Categorical additive term.
+
+    ``encoding_type='one_hot'`` reproduces the original DLNAM categorical
+    pathway. ``layers=()`` is a linear lookup on the one-hot design (fixed-effect
+    style); non-empty layers add an MLP after the one-hot input.
+
+    ``encoding_type='embedding'`` is the memory-efficient alternative. With
+    ``embedding_dim=1`` and ``layers=()`` it is a scalable person/category
+    intercept with one learned scalar per level.
+
+    ``source_col`` lets a diagnostic term name (e.g. ``'person'``) read from a
+    differently named DataFrame column (e.g. ``'id'``). ``order`` is optional:
+    when empty, DataProcessor infers the category order from the supplied data,
+    provided the number of levels matches ``num_categories``.
+    """
     num_categories: int = 2
-    order: Sequence[str] = ()              # index 0 = reference level
-    # uses TermSpec.layers as optional hidden stack on top of the embedding
+    order: Sequence[object] = ()
+    source_col: Optional[str] = None
+    encoding_type: Literal["one_hot", "embedding"] = "embedding"
+    embedding_dim: int = 1
+    role: Literal["covariate", "strata"] = "covariate"
+
+    def __post_init__(self):
+        super().__post_init__()
+        if int(self.num_categories) < 1:
+            raise ValueError("CategoricalTermSpec.num_categories must be >= 1")
+        if self.encoding_type not in ("one_hot", "embedding"):
+            raise ValueError("CategoricalTermSpec.encoding_type must be 'one_hot' or 'embedding'")
+        if int(self.embedding_dim) < 1:
+            raise ValueError("CategoricalTermSpec.embedding_dim must be >= 1")
+        if self.role not in ("covariate", "strata"):
+            raise ValueError("CategoricalTermSpec.role must be 'covariate' or 'strata'")
+        if self.role == "strata":
+            if self.layers:
+                raise ValueError("strata terms must use hidden_layers=[] / layers=()")
+            if self.encoding_type == "embedding" and int(self.embedding_dim) != 1:
+                raise ValueError("embedding strata terms require embedding_dim=1")
+        if self.order and len(self.order) != int(self.num_categories):
+            raise ValueError(
+                "CategoricalTermSpec.order length must equal num_categories when order is supplied"
+            )
+
+
+def _encoding_activation_factory(activation):
+    """Normalise the old encoding-config activation field to a fresh-module factory."""
+    import copy
+
+    if isinstance(activation, nn.Module):
+        return lambda activation=activation: copy.deepcopy(activation)
+    if callable(activation):
+        return activation
+    raise TypeError("encoding config 'activation' must be an nn.Module or callable module factory")
+
+
+def categorical_terms_from_configs(encoding_configs) -> dict[str, CategoricalTermSpec]:
+    """Convert original-style ``encoding_configs`` dictionaries into v2 terms.
+
+    Supported keys:
+      required: ``name``, ``num_categories``
+      optional: ``col``, ``order``, ``hidden_layers``, ``activation``,
+                ``encoding_type``, ``embedding_dim``, ``enabled``, ``role``.
+
+    ``enabled=False`` is a convenience for turning a fixed-effect/categorical
+    adjustment off without deleting its configuration.
+    """
+    out: dict[str, CategoricalTermSpec] = {}
+    for i, ec in enumerate(encoding_configs or []):
+        if not ec.get("enabled", True):
+            continue
+        if "name" not in ec or "num_categories" not in ec:
+            raise ValueError(
+                "each encoding config requires 'name' and 'num_categories'"
+            )
+        name = str(ec["name"])
+        if name in out:
+            raise ValueError(f"duplicate encoding config name '{name}'")
+        ncat = ec["num_categories"]
+        if ncat is None:
+            raise ValueError(
+                f"encoding config '{name}' has num_categories=None. "
+                "V2 must know the number of categories before building the model; "
+                "set it from the training data before constructing ModelConfig."
+            )
+        act = _encoding_activation_factory(ec.get("activation", nn.Mish))
+        layers = tuple(
+            LayerSpec(width=int(w), activation=ActivationSpec(base=act))
+            for w in ec.get("hidden_layers", [])
+        )
+        out[name] = CategoricalTermSpec(
+            num_categories=int(ncat),
+            order=tuple(ec.get("order", ()) or ()),
+            source_col=ec.get("col", name),
+            encoding_type=ec.get("encoding_type", "one_hot"),
+            embedding_dim=int(ec.get("embedding_dim", 1)),
+            role=ec.get("role", "covariate"),
+            layers=layers,
+            num_subnets=1,
+            scaling="none",
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -252,12 +363,48 @@ class CategoricalTermSpec(TermSpec):
 class ModelConfig:
     """A full model = an intercept + a named collection of terms + a link.
 
-    `terms` is keyed by the input name the term consumes (e.g. 'temp',
-    'dptp01', 'trend', 'dow'). The model routes inputs to terms by this key,
-    so adding or removing terms does not change the forward signature.
+    ``terms`` is the native v2 API. ``encoding_configs`` is a compatibility/
+    convenience API retained from v1 so categorical or fixed-effect style terms
+    can be toggled without manually constructing CategoricalTermSpec objects.
+    Converted categorical terms are merged into ``terms`` during __post_init__.
     """
     terms: dict[str, TermSpec] = field(default_factory=dict)
     link: Literal["log", "logit", "identity"] = "log"
+    encoding_configs: Optional[Sequence[dict]] = None
+    strata_config: Optional[dict] = None
+
+    def __post_init__(self):
+        merged = dict(self.terms)
+
+        # Ordinary estimated categorical covariates (e.g. day of week).
+        for name, spec in categorical_terms_from_configs(self.encoding_configs).items():
+            if name in merged:
+                raise ValueError(
+                    f"encoding config '{name}' collides with an existing term name"
+                )
+            merged[name] = spec
+
+        # Optional explicit nuisance-stratum fixed effect. This is a learned
+        # scalar per stratum (sum-to-zero centred in CategoricalTerm), not the
+        # conditional elimination performed by gnm(eliminate=...). Keeping it
+        # separate from encoding_configs makes the modelling role explicit.
+        if self.strata_config and self.strata_config.get("enabled", True):
+            sc = dict(self.strata_config)
+            sc.setdefault("name", "strata")
+            sc.setdefault("col", sc.get("name", "strata"))
+            sc.setdefault("encoding_type", "embedding")
+            sc.setdefault("embedding_dim", 1)
+            sc.setdefault("hidden_layers", [])
+            sc["role"] = "strata"
+            strata_terms = categorical_terms_from_configs([sc])
+            for name, spec in strata_terms.items():
+                if name in merged:
+                    raise ValueError(
+                        f"strata config '{name}' collides with an existing term name"
+                    )
+                merged[name] = spec
+
+        object.__setattr__(self, "terms", merged)
 
 
 @dataclass(frozen=True)
@@ -266,12 +413,19 @@ class TrainConfig:
     lr: float = 8e-4
     lr_min: float = 1e-4
     weight_decay: float = 1e-4
+    strata_weight_decay: float = 0.0       # nuisance strata are unpenalised by default
     schedule: Literal["cosine", "none"] = "cosine"
     batch_fraction: Optional[float] = None     # None -> full batch
     n_ensemble: int = 3
-    loss: Literal["poisson", "bernoulli"] = "poisson"
+    loss: Literal["poisson", "bernoulli", "gaussian"] = "poisson"
     grad_clip: Optional[float] = None
     diagnostics_every: Optional[int] = None    # None -> ten diagnostics per fit; 0 disables
+    show_progress: bool = True
+    gpu_diagnostics: bool = True
+    early_stopping: bool = False
+    early_stopping_patience: int = 30
+    early_stopping_min_delta: float = 1e-5
+    restore_best_weights: bool = True
     seed: int = 123
 
     def __post_init__(self):
@@ -281,18 +435,24 @@ class TrainConfig:
             raise ValueError("TrainConfig learning rates must be non-negative, with lr > 0")
         if self.weight_decay < 0:
             raise ValueError("TrainConfig.weight_decay must be non-negative")
+        if self.strata_weight_decay < 0:
+            raise ValueError("TrainConfig.strata_weight_decay must be non-negative")
         if self.batch_fraction is not None and not 0 < self.batch_fraction <= 1:
             raise ValueError("TrainConfig.batch_fraction must be in (0, 1]")
         if self.schedule not in ("cosine", "none"):
             raise ValueError("TrainConfig.schedule must be 'cosine' or 'none'")
-        if self.loss not in ("poisson", "bernoulli"):
-            raise ValueError("TrainConfig.loss must be 'poisson' or 'bernoulli'")
+        if self.loss not in ("poisson", "bernoulli", "gaussian"):
+            raise ValueError("TrainConfig.loss must be 'poisson', 'bernoulli', or 'gaussian'")
         if self.n_ensemble < 1:
             raise ValueError("TrainConfig.n_ensemble must be at least 1")
         if self.grad_clip is not None and self.grad_clip <= 0:
             raise ValueError("TrainConfig.grad_clip must be positive when set")
         if self.diagnostics_every is not None and self.diagnostics_every < 0:
             raise ValueError("TrainConfig.diagnostics_every must be non-negative")
+        if self.early_stopping_patience < 1:
+            raise ValueError("TrainConfig.early_stopping_patience must be at least 1")
+        if self.early_stopping_min_delta < 0:
+            raise ValueError("TrainConfig.early_stopping_min_delta must be non-negative")
 
 
 # ---------------------------------------------------------------------------
