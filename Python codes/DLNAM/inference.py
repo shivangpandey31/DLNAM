@@ -267,30 +267,73 @@ class EffectExtractor:
         inp = {k: v.to(dev) for k, v in prepared.inputs.items()}
         y = np.asarray(prepared.y).reshape(-1)
         information_weights, mus, phis = [], [], []
+        eliminate_index = getattr(prepared, "eliminate_index", None)
+        profiled = eliminate_index is not None
+        if profiled:
+            if link.name != "log":
+                raise ValueError(
+                    "elimination-aware Laplace intervals currently require a log link"
+                )
+            group_index = np.asarray(eliminate_index).reshape(-1).astype(np.int64)
+            if len(group_index) != len(y):
+                raise ValueError("prepared.eliminate_index is not aligned with y")
+            G = int(group_index.max()) + 1 if len(group_index) else 0
+            event_total = np.bincount(
+                group_index, weights=y.astype(float), minlength=G
+            ).astype(float)
+            if np.any(event_total <= 0):
+                raise ValueError(
+                    "profiled Laplace requires positive outcome mass in every stratum"
+                )
+            profile_probabilities = []
+
+            def _group_softmax(values):
+                values = np.asarray(values, dtype=float).reshape(-1)
+                maxima = np.full(G, -np.inf, dtype=float)
+                np.maximum.at(maxima, group_index, values)
+                ex = np.exp(values - maxima[group_index])
+                den = np.bincount(group_index, weights=ex, minlength=G)
+                return ex / np.clip(den[group_index], 1e-300, None)
+        else:
+            group_index = None
+            event_total = None
+            profile_probabilities = None
         with _t.no_grad():
             for m in ensemble:
-                mu = m(inp).detach().cpu().numpy().reshape(-1).clip(1e-9)
-                mus.append(mu)
-                if link.name == "log":
-                    information_weights.append(mu)
-                    dof = max(len(y) - 1, 1)
-                    phis.append(float(np.sum((y - mu) ** 2 / mu) / dof))
-                elif link.name == "logit":
-                    information_weights.append(np.clip(mu * (1.0 - mu), 1e-9, None))
+                if profiled:
+                    eta = m(inp, return_eta=True).detach().cpu().numpy().reshape(-1)
+                    profile_probabilities.append(_group_softmax(eta))
+                    # Unconditional means are not identified after eliminating
+                    # stratum intercepts. Keep exp(eta) only as a diagnostic
+                    # placeholder; it is NOT used in the profiled Fisher matrix.
+                    mus.append(np.exp(np.clip(eta, -50, 50)))
                     phis.append(1.0)
                 else:
-                    raise NotImplementedError(
-                        "last-layer Laplace currently supports log/Poisson and "
-                        "logit/Bernoulli links"
-                    )
+                    mu = m(inp).detach().cpu().numpy().reshape(-1).clip(1e-9)
+                    mus.append(mu)
+                    if link.name == "log":
+                        information_weights.append(mu)
+                        dof = max(len(y) - 1, 1)
+                        phis.append(float(np.sum((y - mu) ** 2 / mu) / dof))
+                    elif link.name == "logit":
+                        information_weights.append(np.clip(mu * (1.0 - mu), 1e-9, None))
+                        phis.append(1.0)
+                    else:
+                        raise NotImplementedError(
+                            "last-layer Laplace currently supports log/Poisson and "
+                            "logit/Bernoulli links"
+                        )
         phi = float(np.mean(phis)) if phis else 1.0
-        if link.name == "log":
+        if link.name == "log" and not profiled:
             phi = max(phi, 1.0)   # never below Poisson
         li = {
             "prepared_inputs": [inp] * len(ensemble),
-            "information_weight": information_weights,
+            "information_weight": None if profiled else information_weights,
             "mu_hat": mus,
             "laplace_terms": None if laplace_terms is None else tuple(laplace_terms),
+            "eliminate_index": group_index,
+            "profile_probability": profile_probabilities,
+            "profile_event_total": event_total,
         }
         return cls(ensemble, link, IntervalUQ(interval), centering,
                    phi=phi, laplace_inputs=li)
@@ -327,8 +370,17 @@ class EffectExtractor:
                 else prepared_inputs
             w = (information_weight[i] if isinstance(information_weight, (list, tuple))
                  else information_weight)
+            profile_probability = li.get("profile_probability")
+            pp = (
+                profile_probability[i]
+                if isinstance(profile_probability, (list, tuple))
+                else profile_probability
+            )
             return LastLayerLaplace(
-                self.ensemble[i], pin, w, phi=self.phi, include_terms=include_terms
+                self.ensemble[i], pin, w, phi=self.phi, include_terms=include_terms,
+                eliminate_index=li.get("eliminate_index"),
+                profile_probability=pp,
+                profile_event_total=li.get("profile_event_total"),
             )
 
         laps = [_lap(i) for i in range(M)]

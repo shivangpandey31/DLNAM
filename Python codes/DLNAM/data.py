@@ -61,6 +61,9 @@ class PreparedData:
     row_index: Optional[np.ndarray] = None
     input_type: str = "raw"
     category_orders: Optional[dict] = None
+    eliminate_index: Optional[torch.Tensor] = None
+    eliminate_col: Optional[str] = None
+    eliminate_levels: Optional[np.ndarray] = None
 
 
 class DataProcessor:
@@ -85,12 +88,15 @@ class DataProcessor:
         return name
 
     def _required_columns(self, target_col: str, input_type: InputType,
-                          groupby_col: Optional[str], time_col: Optional[str]) -> list[str]:
+                          groupby_col: Optional[str], time_col: Optional[str],
+                          eliminate_col: Optional[str]) -> list[str]:
         cols = [target_col]
         if input_type == "grouped" and groupby_col is not None:
             cols.append(groupby_col)
         if time_col is not None:
             cols.append(time_col)
+        if eliminate_col is not None:
+            cols.append(eliminate_col)
 
         for name, spec in self.cfg.terms.items():
             if isinstance(spec, TrendTermSpec):
@@ -172,6 +178,7 @@ class DataProcessor:
                 input_type: InputType = "raw",
                 groupby_col: Optional[str] = None,
                 time_col: Optional[str] = None,
+                eliminate_col: Optional[str] = None,
                 fit_scaling: bool = True) -> PreparedData:
         """Prepare model tensors and fit term scaling.
 
@@ -192,6 +199,11 @@ class DataProcessor:
             If supplied in grouped mode, rows are stably sorted by group+time
             before lag construction. It is also used to create a calendar-based
             normalised TrendTerm instead of a row-number trend.
+        eliminate_col : str, optional
+            Column defining nuisance strata for the profiled-Poisson likelihood.
+            It is encoded and returned as ``PreparedData.eliminate_index`` but
+            is NOT added as a neural model term. Complete strata must be kept
+            together during profiled training.
         fit_scaling : bool, default True
             Fit exposure/confounder scaling and infer category order. Use True
             for training data. Reuse the SAME DataProcessor with False for
@@ -208,7 +220,9 @@ class DataProcessor:
             raise ValueError("input_type='grouped' requires groupby_col")
 
         ensemble = self._ensemble_list(ensemble)
-        required = self._required_columns(target_col, input_type, groupby_col, time_col)
+        required = self._required_columns(
+            target_col, input_type, groupby_col, time_col, eliminate_col
+        )
         missing = [c for c in required if c not in df.columns]
         if missing:
             raise KeyError(f"missing required columns: {missing}")
@@ -221,15 +235,23 @@ class DataProcessor:
         work = work.reset_index(drop=True)
 
         if input_type == "prelagged":
-            return self._prepare_prelagged(work, ensemble, target_col, time_col, fit_scaling)
+            return self._prepare_prelagged(
+                work, ensemble, target_col, time_col, eliminate_col, fit_scaling
+            )
         if input_type == "grouped":
-            return self._prepare_grouped(work, ensemble, target_col, groupby_col, time_col, fit_scaling)
-        return self._prepare_raw(work, ensemble, target_col, time_col, fit_scaling)
+            return self._prepare_grouped(
+                work, ensemble, target_col, groupby_col, time_col,
+                eliminate_col, fit_scaling
+            )
+        return self._prepare_raw(
+            work, ensemble, target_col, time_col, eliminate_col, fit_scaling
+        )
 
     # ------------------------------------------------------------------
     # RAW: one global continuous time series
     # ------------------------------------------------------------------
-    def _prepare_raw(self, df, ensemble, target_col, time_col, fit_scaling):
+    def _prepare_raw(self, df, ensemble, target_col, time_col,
+                     eliminate_col, fit_scaling):
         surface_lags = [s.lag_max for s in self.cfg.terms.values()
                         if isinstance(s, SurfaceTermSpec)]
         total_lag = max(surface_lags) if surface_lags else 0
@@ -282,12 +304,15 @@ class DataProcessor:
 
         y = torch.tensor(df[target_col].to_numpy(dtype=float)[row_positions],
                          dtype=torch.float32).view(-1, 1)
-        return self._pack(df, inputs, y, raw, row_positions, "raw")
+        return self._pack(
+            df, inputs, y, raw, row_positions, "raw", eliminate_col
+        )
 
     # ------------------------------------------------------------------
     # GROUPED: independent lag histories within each group
     # ------------------------------------------------------------------
-    def _prepare_grouped(self, df, ensemble, target_col, groupby_col, time_col, fit_scaling):
+    def _prepare_grouped(self, df, ensemble, target_col, groupby_col, time_col,
+                         eliminate_col, fit_scaling):
         surface_lags = [s.lag_max for s in self.cfg.terms.values()
                         if isinstance(s, SurfaceTermSpec)]
         total_lag = max(surface_lags) if surface_lags else 0
@@ -355,12 +380,15 @@ class DataProcessor:
 
         y = torch.tensor(df[target_col].to_numpy(dtype=float)[row_positions],
                          dtype=torch.float32).view(-1, 1)
-        return self._pack(df, inputs, y, raw, row_positions, "grouped")
+        return self._pack(
+            df, inputs, y, raw, row_positions, "grouped", eliminate_col
+        )
 
     # ------------------------------------------------------------------
     # PRELAGGED: read lag matrices created by the external research pipeline
     # ------------------------------------------------------------------
-    def _prepare_prelagged(self, df, ensemble, target_col, time_col, fit_scaling):
+    def _prepare_prelagged(self, df, ensemble, target_col, time_col,
+                           eliminate_col, fit_scaling):
         row_positions = np.arange(len(df), dtype=int)
         inputs, raw = {}, {}
 
@@ -407,9 +435,12 @@ class DataProcessor:
 
         y = torch.tensor(df[target_col].to_numpy(dtype=float),
                          dtype=torch.float32).view(-1, 1)
-        return self._pack(df, inputs, y, raw, row_positions, "prelagged")
+        return self._pack(
+            df, inputs, y, raw, row_positions, "prelagged", eliminate_col
+        )
 
-    def _pack(self, df, inputs, y, raw, row_positions, input_type):
+    def _pack(self, df, inputs, y, raw, row_positions, input_type,
+              eliminate_col=None):
         n = int(len(row_positions))
         for name, x in inputs.items():
             if x.shape[0] != n:
@@ -417,6 +448,17 @@ class DataProcessor:
                     f"prepared term '{name}' has {x.shape[0]} rows; expected {n}"
                 )
         original = df["__dlnam_original_index__"].to_numpy()[row_positions]
+        eliminate_index = None
+        eliminate_levels = None
+        if eliminate_col is not None:
+            values = df[eliminate_col].to_numpy()[row_positions]
+            codes, levels = pd.factorize(values, sort=False)
+            if np.any(codes < 0):
+                raise ValueError(
+                    f"unmapped/missing elimination stratum in '{eliminate_col}'"
+                )
+            eliminate_index = torch.tensor(codes, dtype=torch.long)
+            eliminate_levels = np.asarray(levels)
         return PreparedData(
             inputs=inputs,
             y=y,
@@ -425,4 +467,7 @@ class DataProcessor:
             row_index=original,
             input_type=input_type,
             category_orders=dict(self.category_orders),
+            eliminate_index=eliminate_index,
+            eliminate_col=eliminate_col,
+            eliminate_levels=eliminate_levels,
         )

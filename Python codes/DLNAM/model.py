@@ -51,7 +51,15 @@ class DLNAM(nn.Module):
         return cls(terms, make_link(cfg.link))
 
     def forward(self, inputs: dict[str, torch.Tensor], *,
-                return_penalty: bool = False):
+                return_penalty: bool = False,
+                return_eta: bool = False):
+        """Evaluate the additive model.
+
+        ``return_eta=True`` exposes the linear predictor before the inverse
+        link. The profiled-Poisson likelihood uses this scale to eliminate
+        nuisance stratum intercepts analytically instead of estimating an ID
+        embedding.
+        """
         eta = self.intercept
         penalty = eta.new_zeros(())
         for name, term in self.terms.items():
@@ -60,10 +68,10 @@ class DLNAM(nn.Module):
             weight = float(getattr(getattr(term, "spec", None), "penalty", 0.0))
             if weight > 0.0:
                 penalty = penalty + weight * contribution.pow(2).mean()
-        response = self.link.inverse(eta)
+        output = eta if return_eta else self.link.inverse(eta)
         if return_penalty:
-            return response, penalty
-        return response
+            return output, penalty
+        return output
 
     def term(self, name: str) -> AdditiveTerm:
         return self.terms[name]

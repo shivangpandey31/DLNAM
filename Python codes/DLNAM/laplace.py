@@ -108,9 +108,10 @@ def pooled_evidence_lambda(evidence_terms, iters=300, tol=1e-7):
 class LastLayerLaplace:
     """Joint last-layer Laplace approximation for one DLNAM member."""
 
-    def __init__(self, model, prepared_inputs, information_weight, *, phi=1.0,
+    def __init__(self, model, prepared_inputs, information_weight=None, *, phi=1.0,
                  ridge=1e-6, prior_precision=None, include_terms=None,
-                 fisher_batch_size=4096):
+                 fisher_batch_size=4096, eliminate_index=None,
+                 profile_probability=None, profile_event_total=None):
         self.model = model
         self.model.eval()
         self.device = next(model.parameters()).device
@@ -119,9 +120,22 @@ class LastLayerLaplace:
         self.inputs = {
             k: prepared_inputs[k].to(self.device) for k in selected
         }
-        self.information_weight = np.asarray(
-            information_weight, dtype=float
-        ).reshape(-1).clip(1e-12)
+        self.information_weight = (
+            None if information_weight is None else
+            np.asarray(information_weight, dtype=float).reshape(-1).clip(1e-12)
+        )
+        self.eliminate_index = (
+            None if eliminate_index is None else
+            np.asarray(eliminate_index, dtype=np.int64).reshape(-1)
+        )
+        self.profile_probability = (
+            None if profile_probability is None else
+            np.asarray(profile_probability, dtype=float).reshape(-1)
+        )
+        self.profile_event_total = (
+            None if profile_event_total is None else
+            np.asarray(profile_event_total, dtype=float).reshape(-1)
+        )
         self.phi = float(phi)
         self.ridge = float(ridge)
         self.include_terms = None if include_terms is None else tuple(include_terms)
@@ -133,6 +147,21 @@ class LastLayerLaplace:
         self._FtWF = None
         self._eigcache = None
         self._prior_precision = prior_precision
+
+        profiled_args = (
+            self.eliminate_index is not None,
+            self.profile_probability is not None,
+            self.profile_event_total is not None,
+        )
+        if any(profiled_args) and not all(profiled_args):
+            raise ValueError(
+                "profiled Laplace requires eliminate_index, profile_probability, "
+                "and profile_event_total together"
+            )
+        if not any(profiled_args) and self.information_weight is None:
+            raise ValueError(
+                "standard Laplace requires information_weight"
+            )
 
     def _prior_mask(self):
         mask = []
@@ -171,14 +200,44 @@ class LastLayerLaplace:
             )
         return design
 
+    def _design_indices(self, indices):
+        """Last-layer design for arbitrary observation indices."""
+        idx = torch.as_tensor(indices, device=self.device, dtype=torch.long)
+        B = int(idx.numel())
+        blocks = [torch.ones((B, 1), device=self.device,
+                             dtype=self.model.intercept.dtype)]
+        for name, term in self.model.terms.items():
+            if self.include_terms is not None and name not in self.include_terms:
+                continue
+            design_fn = getattr(term, "_last_layer_design", None)
+            if design_fn is None:
+                raise NotImplementedError(
+                    f"last-layer design is unavailable for {type(term).__name__}"
+                )
+            blocks.append(design_fn(self.inputs[name][idx]))
+        design = torch.cat(blocks, dim=1)
+        if design.shape != (B, self.P):
+            raise RuntimeError(
+                f"last-layer design has shape {tuple(design.shape)}, "
+                f"expected {(B, self.P)}"
+            )
+        return design
+
     def _ftwf(self):
-        """GLM information Phi^T W Phi, accumulated in exact row blocks."""
+        """Likelihood information for the fitted last-layer parameters.
+
+        Standard GLMs use ``Phi^T W Phi``. For profiled Poisson strata, the
+        nuisance intercept information is removed analytically and each stratum
+        contributes ``Y_g * Cov_p(Phi_g)`` under its fitted within-stratum
+        softmax probabilities.
+        """
         if self._FtWF is None:
             N = self._N()
+            if self.eliminate_index is not None:
+                self._FtWF = self._profiled_information()
+                return self._FtWF
             if len(self.information_weight) != N:
-                raise ValueError(
-                    "information weights do not match prepared input rows"
-                )
+                raise ValueError("information weights do not match prepared input rows")
             F = np.zeros((self.P, self.P), dtype=float)
             batch_size = min(self.fisher_batch_size, N)
             start = 0
@@ -201,6 +260,70 @@ class LastLayerLaplace:
             self.fisher_batch_size = batch_size
             self._FtWF = 0.5 * (F + F.T)
         return self._FtWF
+
+    def _profiled_information(self):
+        """Fisher information after profiling Poisson stratum intercepts."""
+        N = self._N()
+        g = self.eliminate_index
+        prob = self.profile_probability
+        if len(g) != N or len(prob) != N:
+            raise ValueError(
+                "profiled Laplace group/probability vectors do not match input rows"
+            )
+        if np.any(prob < 0) or not np.all(np.isfinite(prob)):
+            raise ValueError("invalid profiled within-stratum probabilities")
+
+        G = int(g.max()) + 1 if len(g) else 0
+        if G <= 0 or len(self.profile_event_total) != G:
+            raise ValueError("profile_event_total does not match elimination strata")
+
+        counts = np.bincount(g, minlength=G)
+        order = np.argsort(g, kind="stable")
+        offsets = np.concatenate([[0], np.cumsum(counts)])
+
+        F = np.zeros((self.P, self.P), dtype=float)
+        # fisher_batch_size is interpreted as an approximate ROW budget. Build
+        # each chunk from complete groups so the profiled covariance is exact.
+        start_group = 0
+        with torch.no_grad():
+            while start_group < G:
+                stop_group = start_group
+                rows = 0
+                while stop_group < G and (rows < self.fisher_batch_size or stop_group == start_group):
+                    rows += int(counts[stop_group])
+                    stop_group += 1
+
+                row_idx = order[offsets[start_group]:offsets[stop_group]]
+                try:
+                    block = self._design_indices(row_idx)
+                except torch.OutOfMemoryError:
+                    if stop_group - start_group <= 1:
+                        raise
+                    # Reduce the future row budget and retry this same group range
+                    # with fewer groups.
+                    self.fisher_batch_size = max(self.fisher_batch_size // 2, 1)
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    continue
+
+                Phi = block.detach().cpu().numpy().astype(float, copy=False)
+                local_g = g[row_idx] - start_group
+                p = prob[row_idx]
+                ytot = self.profile_event_total[start_group:stop_group]
+
+                # First term: sum_g Y_g sum_j p_gj x_gj x_gj^T
+                row_weight = ytot[local_g] * p
+                F += (Phi * row_weight[:, None]).T @ Phi
+
+                # Second term: sum_g Y_g xbar_g xbar_g^T
+                K = stop_group - start_group
+                means = np.zeros((K, self.P), dtype=float)
+                np.add.at(means, local_g, Phi * p[:, None])
+                F -= (means * ytot[:, None]).T @ means
+
+                start_group = stop_group
+
+        return 0.5 * (F + F.T)
 
     def evidence_terms(self):
         """Return sufficient statistics for shared lambda selection."""

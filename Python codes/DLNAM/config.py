@@ -417,7 +417,9 @@ class TrainConfig:
     schedule: Literal["cosine", "none"] = "cosine"
     batch_fraction: Optional[float] = None     # None -> full batch
     n_ensemble: int = 3
-    loss: Literal["poisson", "bernoulli", "gaussian"] = "poisson"
+    loss: Literal[
+        "poisson", "profiled_poisson", "bernoulli", "gaussian"
+    ] = "poisson"
     grad_clip: Optional[float] = None
     diagnostics_every: Optional[int] = None    # None -> ten diagnostics per fit; 0 disables
     show_progress: bool = True
@@ -441,8 +443,11 @@ class TrainConfig:
             raise ValueError("TrainConfig.batch_fraction must be in (0, 1]")
         if self.schedule not in ("cosine", "none"):
             raise ValueError("TrainConfig.schedule must be 'cosine' or 'none'")
-        if self.loss not in ("poisson", "bernoulli", "gaussian"):
-            raise ValueError("TrainConfig.loss must be 'poisson', 'bernoulli', or 'gaussian'")
+        if self.loss not in ("poisson", "profiled_poisson", "bernoulli", "gaussian"):
+            raise ValueError(
+                "TrainConfig.loss must be 'poisson', 'profiled_poisson', "
+                "'bernoulli', or 'gaussian'"
+            )
         if self.n_ensemble < 1:
             raise ValueError("TrainConfig.n_ensemble must be at least 1")
         if self.grad_clip is not None and self.grad_clip <= 0:

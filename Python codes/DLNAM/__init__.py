@@ -20,7 +20,7 @@ from .terms.surface import SurfaceTerm
 from .terms.smooth import SmoothTerm, TrendTerm
 from .terms.categorical import CategoricalTerm
 from .model import DLNAM
-from .train import Trainer, print_gpu_stats
+from .train import Trainer
 from .data import DataProcessor, PreparedData
 from .evaluate import PerformanceEvaluator
 from .visualize import ResultVisualizer
