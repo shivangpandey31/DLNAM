@@ -1,0 +1,22 @@
+{
+  "r_version": "R version 4.6.1 (2026-06-24)",
+  "platform": "aarch64-unknown-linux-gnu",
+  "methods": ["qaic", "qbic", "pen", "tdlnm"],
+  "tdlnm": {
+    "family": "gaussian",
+    "response": "log1p",
+    "n_burn": 5000,
+    "n_iter": 15000,
+    "n_thin": 10,
+    "n_attempts": 10,
+    "exposure_splits": 30,
+    "n_trees": 20
+  },
+  "packages": {
+    "dlnm": "2.4.10",
+    "splines": "4.6.1",
+    "mgcv": "1.9.4",
+    "jsonlite": "2.0.0",
+    "dlmtree": "1.1.1"
+  }
+}
