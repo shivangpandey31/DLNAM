@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dlnam"
-version = "1.0.0"
+version = "0.1.0"
 description = "Distributed Lag Neural Additive Models for interpretable count and binary regression"
 readme = "README.md"
 requires-python = ">=3.10"
