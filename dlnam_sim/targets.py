@@ -231,9 +231,7 @@ def summarise_regions(
         output[f"cov_{label}"], output[f"cov_{label}_se"] = (
             study.coverage_mean_se(term, mask=mask)
         )
-        # Mean interval width on the logRR scale. Coverage alone cannot separate a
-        # well-calibrated interval from a usefully uninformative one; width lets
-        # calibration be read as coverage attained at a given width.
+        # Mean interval width on the logRR scale, recorded alongside coverage.
         output[f"width_{label}"] = study.width_mean(term, mask=mask)
         # Counterfactual coverage of the Laplace term alone. The reported
         # interval already carries the between-member variance, so this is what

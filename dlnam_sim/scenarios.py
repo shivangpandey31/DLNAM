@@ -111,13 +111,6 @@ SCENARIO_DISPLAY_NAMES = {
     "dgp4": "DGP 4",
 }
 
-LEGACY_SCENARIO_ALIASES = {
-    "smooth": "dgp1",
-    "delayed_peaks": "dgp2",
-    "localized_peak": "dgp3",
-    "tilting_threshold": "dgp4",
-}
-
 SURFACE_FUNCTIONS = {
     "dgp1": f_dgp1,
     "dgp2": f_dgp2,
@@ -126,13 +119,7 @@ SURFACE_FUNCTIONS = {
 }
 
 
-def canonical_scenario(name: str) -> str:
-    """Return the canonical DGP key, accepting legacy result-file names."""
-    return LEGACY_SCENARIO_ALIASES.get(name, name)
-
-
 def _build(name, lag_max=LAG_MAX):
-    name = canonical_scenario(name)
     if name not in SURFACE_FUNCTIONS:
         valid = ", ".join(SURFACE_FUNCTIONS)
         raise KeyError(f"unknown simulation scenario {name!r}; expected one of: {valid}")
@@ -169,9 +156,7 @@ __all__ = [
     "REFERENCE",
     "SCENARIO_KEYS",
     "SCENARIO_DISPLAY_NAMES",
-    "LEGACY_SCENARIO_ALIASES",
     "SURFACE_FUNCTIONS",
-    "canonical_scenario",
     "VALUE_RANGE",
     "f_dgp1",
     "f_dgp2",
