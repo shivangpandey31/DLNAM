@@ -61,6 +61,17 @@ control_for <- function(exposure) {
   if (is.null(spec)) character(0) else as.character(spec)
 }
 
+# The lag sequence crosspred evaluated: seq(lag[1], lag[2], by = bylag).
+# Column names are not reliably numeric, and column indices are only the
+# lag values when bylag == 1, so read it off the prediction object.
+lag_values <- function(pred, mat) {
+  by <- if (!is.null(pred$bylag)) pred$bylag else 1
+  lv <- seq(pred$lag[1], pred$lag[2], by = by)
+  if (length(lv) == ncol(mat)) return(lv)
+  nm <- suppressWarnings(as.numeric(colnames(mat)))
+  if (all(is.finite(nm)) && length(nm) == ncol(mat)) nm else seq_len(ncol(mat))
+}
+
 write_outputs <- function(exposure, pred, grid) {
   cum <- data.frame(
     value = as.numeric(grid),
@@ -73,7 +84,7 @@ write_outputs <- function(exposure, pred, grid) {
   mat <- pred$matRRfit
   surf <- data.frame(
     value = rep(as.numeric(grid), times = ncol(mat)),
-    lag = rep(seq_len(ncol(mat)), each = nrow(mat)),
+    lag = rep(lag_values(pred, mat), each = nrow(mat)),
     rr = as.numeric(mat)
   )
   write.csv(surf, p(exposure, "surf.csv"), row.names = FALSE)
@@ -129,7 +140,7 @@ fit_exposure <- function(exposure) {
     cen = ref,
     model.link = "logit",
     at = grid,
-    bylag = 1,
+    bylag = 0.1,   # lag spline is continuous: evaluate between months
     cumul = TRUE,
     ci.level = ci
   )

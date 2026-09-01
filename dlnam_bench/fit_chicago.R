@@ -16,6 +16,12 @@
 # Requires: dlnm, splines, mgcv, jsonlite; dlmtree for tdlnm.
 
 suppressMessages({ library(dlnm); library(splines); library(mgcv); library(jsonlite) })
+
+# Reference temperature for centering exported relative risks.
+# Use "config" for the value written by run_real_chicago.py, or set a number
+# such as 21.0 for a fixed reference temperature.
+REFERENCE <- "config"
+
 write_environment <- function(path, methods, tdlnm_settings) {
   pkgs <- c("dlnm", "splines", "mgcv", "jsonlite")
   if ("tdlnm" %in% methods) pkgs <- c(pkgs, "dlmtree")
@@ -47,7 +53,7 @@ dat <- read.csv(file.path(bench, cfg$data))
 x       <- dat[[cfg$exposure_col]]
 y       <- dat[[cfg$target_col]]
 grid    <- as.numeric(cfg$grid)
-ref     <- as.numeric(cfg$reference)
+ref     <- if (identical(REFERENCE, "config")) as.numeric(cfg$reference) else as.numeric(REFERENCE)
 lag_max <- as.integer(cfg$lag_max)
 ci      <- as.numeric(cfg$ci_level)
 vdf_g   <- as.integer(cfg$value_df_grid)
@@ -95,7 +101,7 @@ if ("tdlnm" %in% methods) {
   unlink(file.path(bench, "tdlnm_fit_status.json"), force = TRUE)
 }
 
-# --- adjustment terms (matching the original dlnm_chicago.R) ------------------
+# --- adjustment terms ---------------------------------------------------------
 # Dew point enters as a natural spline; ozone and PM10 enter linearly; plus a
 # seasonal/long-term ns(time) trend and day-of-week. cfg$confounder_spec maps
 # each column name -> either an integer ns df, or 0 / "linear" for a linear term.
@@ -209,6 +215,9 @@ fit_pen <- function() {
   k <- length(cb_cols)
   cat(sprintf("  %-10s edf %.1f / %d (%.0f%%)   basis %d x %d\n",
               "Penalised", edf, k, 100 * edf / k, vdf_pen, ldf_pen))
+  write_json(list(edf = edf, basis_dim = k,
+                  value_df = vdf_pen, lag_df = ldf_pen),
+             pre("", "pen_diagnostics.json"), auto_unbox = TRUE, pretty = TRUE)
 }
 
 summary_tdlnm <- NULL

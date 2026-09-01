@@ -3,7 +3,8 @@ dlnam_bench.plots -- publication figures for the DLNAM paper experiments.
 
 Single 3x2 grid (save_all -> mc_grid.{pdf,png}):
     row 0  Error     : RMSE per model, partitioned by exact MSE-share into
-                       bias^2 (solid) and variance (light hatch); marker ± MCSE
+                       bias^2 (solid) and variance (light hatch); marker with
+                       95% Monte Carlo CI
                        at the RMSE tip. Columns = Total / Interior / Boundary.
     row 1  Coverage  : pointwise coverage vs nominal 0.95. Same columns.
 
@@ -74,11 +75,14 @@ _RC = {
     "xtick.major.width": 0.6, "ytick.major.width": 0.6,
     "legend.frameon": False, "hatch.linewidth": 0.5,
     "lines.dash_capstyle": "round", "lines.solid_capstyle": "round",
+    "axes.labelsize": 8.5,
+    "xtick.labelsize": 7.5, "ytick.labelsize": 7.5,
+    "axes.grid": False,
 }
 
 
 VARIANCE_ALPHA = 0.28   # variance-segment opacity, composited on white (lighter, same hue)
-MC_SE_MULT = 1.0        # figures show estimate ± Monte Carlo SE.
+MC_SE_MULT = 1.96       # figures show approximate 95% Monte Carlo CIs.
 
 
 class AdaptiveRRNorm(mpl.colors.Normalize):
@@ -327,7 +331,7 @@ def mc_grid(results, scenarios=None, title="Simulation Study: Model Comparison")
 
         model_h = [Line2D([0], [0], marker=MARKERS[m], color=COLOURS[m], lw=0, ms=6,
                           label=LABELS[m]) for m in present]
-        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="\u00b1 MCSE")
+        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="95% MC CI")
         comp_h = [Patch(facecolor="0.35", edgecolor="none", label="Bias\u00b2 (%)"),
                   Patch(facecolor=_composite("#666666", VARIANCE_ALPHA + 0.25),
                         edgecolor="0.35", lw=0,
@@ -379,7 +383,7 @@ def save_all(results, outdir, scenarios=None, fmts=("pdf", "png"),
 # shared legend; metric-panel whiskers show estimate ± Monte Carlo SE.
 # ===========================================================================
 
-_A_LABEL_SZ = 8
+_A_LABEL_SZ = 8.5
 _BOUNDARY_TINT = "#DCE6EC"      # lightest blue-grey (near white), palette hue
 _BOUNDARY_ALPHA = 0.45
 
@@ -456,7 +460,6 @@ def _draw_curve_block(axes_row, curves, scenarios, boundary):
         ax.set_title(_nm(s), fontsize=9, weight="bold", loc="center", pad=6)
         ax.set_xlabel("Exposure", fontsize=_A_LABEL_SZ)
         ax.margins(x=0)
-        ax.tick_params(labelsize=_A_LABEL_SZ - 0.5)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
         for sp in ("left", "bottom"):
@@ -507,7 +510,7 @@ def composite(results, curves, scenarios=None, boundary=None,
                           label=LABELS[m]) for m in present]
         truth_h = Line2D([0], [0], color=TRUTH_COLOUR,
                          ls=TRUTH_LINESTYLE, lw=1.5, label="DGP")
-        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="\u00b1 MCSE")
+        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="95% MC CI")
         comp_h = [Patch(facecolor="0.35", edgecolor="none", label="Bias\u00b2 (%)"),
                   Patch(facecolor=_composite("#666666", VARIANCE_ALPHA + 0.25),
                         edgecolor="0.35", lw=0, hatch="//", label="Variance (%)"),
@@ -595,7 +598,7 @@ def metric_composite(
             )
             for m in present
         ]
-        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="\u00b1 MCSE")
+        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="95% MC CI")
         comp_h = [
             Patch(facecolor="0.35", edgecolor="none", label="Bias\u00b2 (%)"),
             Patch(
@@ -642,13 +645,16 @@ def save_metric_composite(
 
 
 # ===========================================================================
-# Joint-fit composite: same A/B/C figure plus D = RMSE degradation relative to
-# the corresponding single-exposure MC. The original composite() is left
-# untouched so existing figures stay byte-for-byte conceptually unchanged.
+# Joint-fit composite: the A/B/C figure plus D = RMSE degradation relative to
+# the corresponding single-exposure MC.
 # ===========================================================================
 
 def _draw_degradation_block(axes_row, degradation, scenarios, present, y0, off):
-    vals = []
+    # The axis must reach the end of the longest whisker, as the error block
+    # does: ratios and standard errors are on different scales, so the limit is
+    # taken over interval endpoints rather than over the two mixed together
+    # (clip_on is False here, so an over-long interval would cross the spine).
+    ends = []
     for s in scenarios:
         if s not in degradation:
             continue
@@ -656,10 +662,11 @@ def _draw_degradation_block(axes_row, degradation, scenarios, present, y0, off):
             if m not in degradation[s]:
                 continue
             for _, rt in REGIONS:
-                vals.append(degradation[s][m].get(f"deg_{rt}", np.nan))
-                vals.append(degradation[s][m].get(f"deg_{rt}_se", 0.0))
-    finite = [float(v) for v in vals if np.isfinite(v)]
-    xmax = max(1.15, max(finite) * 1.10) if finite else 1.15
+                v = degradation[s][m].get(f"deg_{rt}", np.nan)
+                e = degradation[s][m].get(f"deg_{rt}_se", 0.0)
+                if np.isfinite(v):
+                    ends.append(float(v) + MC_SE_MULT * float(e))
+    xmax = max(1.15, max(ends) * 1.06) if ends else 1.15
 
     for (rname, rt), ax in zip(REGIONS, axes_row):
         for mi, m in enumerate(present):
@@ -685,7 +692,8 @@ def _draw_degradation_block(axes_row, degradation, scenarios, present, y0, off):
             sp.set_zorder(10)
 
 
-def composite_with_degradation(results, curves, degradation, scenarios=None, boundary=None):
+def composite_with_degradation(results, curves, degradation, scenarios=None, boundary=None,
+                               title="Simulation Study: Model Comparison (Joint)"):
     scenarios = scenarios or list(results.keys())
     present = [m for m in MODELS if m in next(iter(results.values()))]
     n_s = len(scenarios)
@@ -694,8 +702,8 @@ def composite_with_degradation(results, curves, degradation, scenarios=None, bou
     bh = 0.13
 
     with plt.rc_context(_RC):
-        fig = plt.figure(figsize=(13.5, 11.2))
-        gs = fig.add_gridspec(4, 12, height_ratios=[0.70, 1.05, 1.05, 0.82],
+        fig = plt.figure(figsize=(13.5, 11.9))
+        gs = fig.add_gridspec(4, 12, height_ratios=[0.70, 1.05, 1.05, 1.05],
                               hspace=0.55, wspace=0.75,
                               left=0.07, right=0.985, top=0.91, bottom=0.065)
         axA = [fig.add_subplot(gs[0, 3 * i:3 * i + 3]) for i in range(4)]
@@ -708,7 +716,7 @@ def composite_with_degradation(results, curves, degradation, scenarios=None, bou
         _draw_curve_block(axA, curves, scenarios, boundary)
         axA[0].set_ylabel("Cumulative RR", fontsize=_A_LABEL_SZ)
 
-        xmax = max(results[s][m][f"err_{rt}"] + results[s][m].get(f"err_{rt}_se", 0.0)
+        xmax = max(results[s][m][f"err_{rt}"] + MC_SE_MULT * results[s][m].get(f"err_{rt}_se", 0.0)
                    for s in scenarios for m in present for _, rt in REGIONS) * 1.06
         _draw_error_block(axB, results, scenarios, present, y0, off, bh, xmax)
         _draw_coverage_block(axC, results, scenarios, present, y0, off)
@@ -732,7 +740,7 @@ def composite_with_degradation(results, curves, degradation, scenarios=None, bou
                           label=LABELS[m]) for m in present]
         truth_h = Line2D([0], [0], color=TRUTH_COLOUR,
                          ls=TRUTH_LINESTYLE, lw=1.5, label="DGP")
-        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="\u00b1 MCSE")
+        se_proxy = Line2D([0], [0], color="0.4", lw=1.1, label="95% MC CI")
         comp_h = [Patch(facecolor="0.35", edgecolor="none", label="Bias\u00b2 (%)"),
                   Patch(facecolor=_composite("#666666", VARIANCE_ALPHA + 0.25),
                         edgecolor="0.35", lw=0, hatch="//", label="Variance (%)"),
@@ -741,15 +749,16 @@ def composite_with_degradation(results, curves, degradation, scenarios=None, bou
         fig.legend(handles=legend_h, loc="lower center", ncol=len(legend_h),
                    bbox_to_anchor=(0.5, -0.025), fontsize=7.8, columnspacing=1.05,
                    handletextpad=0.5, handler_map={se_proxy: _WhiskerHandler()})
-        fig.suptitle("Simulation Study: Joint Fit Model Comparison", fontsize=13,
-                     weight="bold", y=0.965)
+        fig.suptitle(title, fontsize=13, weight="bold", y=0.965)
     return fig
 
 
 def save_all_with_degradation(results, outdir, degradation, scenarios=None,
                               fmts=("pdf", "png"), curves=None,
-                              boundary=None, stem="mc_joint"):
-    fig = composite_with_degradation(results, curves, degradation, scenarios, boundary)
+                              boundary=None, stem="mc_joint",
+                              title="Simulation Study: Model Comparison (Joint)"):
+    fig = composite_with_degradation(results, curves, degradation, scenarios, boundary,
+                                     title=title)
     paths = []
     for ext in fmts:
         p = os.path.join(outdir, f"{stem}.{ext}")
