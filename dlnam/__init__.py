@@ -7,7 +7,7 @@ simulation / Monte-Carlo machinery a true add-on: deleting `dlnam_sim` leaves
 the core fully functional, and the core has zero awareness it exists.
 """
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 
 from .config import (
     ActivationSpec, TransformSpec, SoftCapSpec, ExUSpec, LayerSpec,
