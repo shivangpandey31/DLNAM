@@ -23,16 +23,28 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Deterministic GPU reductions. Several backward kernels (notably the
+# categorical embedding) accumulate with atomics, so an identical seed does not
+# otherwise give an identical fit: reruns of this analysis moved minimum
+# mortality by ~0.6 C. Must be set before torch initialises cuBLAS.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import numpy as np
 import pandas as pd
 import torch
+
+torch.use_deterministic_algorithms(True)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgb
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.ticker import MaxNLocator
 
 from dlnam import (
     ActivationSpec,
@@ -63,13 +75,17 @@ HERE = Path(__file__).resolve().parent
 CSV_PATH = ROOT / "chicago_nmmaps.csv"
 BENCH_DIR = HERE / "real_chicago_data"
 RESULTS_DIR = results_dir(HERE)
+RESULT_JSON = RESULTS_DIR / "chicago_model_comparison.json"
 RSCRIPT = "Rscript"
 RSCRIPT_FILE = ROOT / "dlnam_bench" / "fit_chicago.R"
 
 LAG_MAX = 30
 N_GRID = 200
 CI_LEVEL = 0.95
-EPOCHS = 2500
+REFERENCE = "median"  # use "median" or a fixed value such as 21.0
+EPOCHS = 5000
+# Curvature penalty applied to the exposure-lag surface.
+ROUGHNESS = 0.003
 N_ENSEMBLE = 3
 SEED = 0
 # One interval construction across every analysis: the last-layer
@@ -81,22 +97,14 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DOW_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday",
              "Friday", "Saturday", "Sunday"]
 
-# MC DLNM search grid. The penalised DLNM basis dimensions default to the upper
-# end of this grid, capped by lag_max for the lag basis.
-# The applied grid is narrower than the simulation's 2-10. The published
-# analysis of this dataset (the dlnm package example, Gasparrini 2011) uses a
-# 5-degree-of-freedom exposure margin, so this range brackets the literature
-# value. Widening it to the simulation grid was tested and rejected: the three
-# cross-basis fits then oscillate, QAIC placing minimum mortality at -19.7 C,
-# with roughly five times the total variation of the published fit, while the
-# DLNAM and the treed model are unaffected.
+# Cross-basis search grid for the criterion-selected DLNMs. The penalised
+# dimensions take the upper end of the grid, capped by lag_max for the lag
+# basis.
 VALUE_DF_GRID = tuple(range(2, 6))
 LAG_DF_GRID = tuple(range(2, 6))
 PENALIZED_VALUE_DF = max(VALUE_DF_GRID)
 PENALIZED_LAG_DF = max(LAG_DF_GRID)
-# Identical to the simulation, which in turn follows Mork and Wilson (2022):
-# 20 trees, 30 candidate exposure splits, 5000 burn-in, 15,000 post-burn,
-# thinning by 10.
+# T-DLNM sampler settings, as in the simulation.
 TDLNM_SETTINGS = {
     "burn": 5000,
     "iter": 15000,
@@ -106,6 +114,11 @@ TDLNM_SETTINGS = {
     "trees": 20,
 }
 SURFACE_SCALE_MODE = "per_model"  # "shared" or "per_model"
+# Controls the RR (vertical) axis of the surface row only; the temperature and
+# lag axes are identical across panels either way.
+# "shared" pools the RR axis over the five fits, making surface amplitude
+# comparable across panels -- these span roughly sixfold -- at the cost of
+# flattening the smaller surfaces. "per_model" keeps each panel readable.
 
 # Adjustment structure used by the existing Chicago DLNM runner.
 CONFOUNDER_SPEC = {"dptp01": 3, "o301": 0, "pm1001": 0}
@@ -124,19 +137,22 @@ METHODS = {
 # --------------------------------------------------------------------------
 
 
-PLOT_RC = {
-    "figure.dpi": 150,
-    "savefig.dpi": 400,
-    "font.size": 8.5,
-    "font.family": "sans-serif",
-    "axes.linewidth": 0.6,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "xtick.major.width": 0.6,
-    "ytick.major.width": 0.6,
-    "legend.frameon": False,
-}
-
+def _hardware() -> dict:
+    """Machine the fit actually ran on, so the reported environment is recorded
+    rather than asserted. Mirrors the block written by the scaling benchmark."""
+    import platform
+    hw = {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "logical_cpu_count": os.cpu_count(),
+        "torch_device": DEVICE,
+        "torch_version": torch.__version__,
+        "cuda_version": torch.version.cuda,
+    }
+    if torch.cuda.is_available():
+        hw["gpu"] = torch.cuda.get_device_name(0)
+    return hw
 
 def load_chicago(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
@@ -148,7 +164,6 @@ def load_chicago(path: Path) -> pd.DataFrame:
 def build_dlnam_config() -> ModelConfig:
     """Chicago model with the MC surface architecture and existing adjustments."""
     mish = lambda: ActivationSpec(base=torch.nn.Mish)
-    silu = lambda: ActivationSpec(base=torch.nn.SiLU)
     mix_init = lambda: InitSpec(scheme="normal", mean=0.0, std=0.1)
     exu_bias = lambda: InitSpec(scheme="uniform", lo=0.0, hi=1.0)
     tl = lambda: InitSpec(scheme="torch_linear")
@@ -162,6 +177,8 @@ def build_dlnam_config() -> ModelConfig:
             num_subnets=N_ENSEMBLE,
             scaling="minmax",
             lag_max=LAG_MAX,
+            roughness_value=ROUGHNESS,
+            roughness_lag=ROUGHNESS,
             input_exu=ExUSpec(
                 enabled=True,
                 weight_mean=1.5,
@@ -227,6 +244,14 @@ def _n_years(df: pd.DataFrame) -> int:
     return max(1, int(round(len(df) / 365.25)))
 
 
+def _resolve_reference(temp: np.ndarray) -> float:
+    if isinstance(REFERENCE, str):
+        if REFERENCE.lower() == "median":
+            return float(np.median(temp))
+        raise ValueError("REFERENCE must be 'median' or a numeric value")
+    return float(REFERENCE)
+
+
 def prepare_chicago_bench() -> tuple[pd.DataFrame, np.ndarray, float, int]:
     BENCH_DIR.mkdir(parents=True, exist_ok=True)
     df = load_chicago(CSV_PATH)
@@ -239,7 +264,7 @@ def prepare_chicago_bench() -> tuple[pd.DataFrame, np.ndarray, float, int]:
 
     temp = sub["temp"].to_numpy(dtype=float)
     grid = np.linspace(float(temp.min()), float(temp.max()), N_GRID)
-    reference = float(np.median(temp))
+    reference = _resolve_reference(temp)
     config = {
         "data": "chicago_data.csv",
         "exposure_col": "temp",
@@ -289,7 +314,7 @@ def run_dlnm_fits() -> None:
         raise SystemExit(f"R exited with status {result.returncode}")
 
 
-def fit_dlnam(df: pd.DataFrame, grid: np.ndarray) -> dict:
+def fit_dlnam(df: pd.DataFrame, grid: np.ndarray, reference: float) -> dict:
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
@@ -318,12 +343,12 @@ def fit_dlnam(df: pd.DataFrame, grid: np.ndarray) -> dict:
     evaluator.report(perf)
 
     link = make_link("log")
-    centering = Centering(method="median")
+    centering = Centering(method="reference", value=reference)
     extractor = EffectExtractor.with_laplace(
         trainer.ensemble, prepared, link, centering, interval=SE_SOURCE
     )
     estimate = extractor.extract("temp", grid, alpha=1.0 - CI_LEVEL)
-    ref = float(trainer.ensemble[0].term("temp")._data_median)
+    ref = float(reference)
     surface_rr = np.exp(np.mean([
         model.term("temp").per_lag_log_rr(grid, ref)
         for model in trainer.ensemble
@@ -368,7 +393,7 @@ def load_dlnm_surface(prefix: str) -> pd.DataFrame:
 
 def save_outputs(dlnam: dict, dlnm_curves: dict[str, pd.DataFrame],
                  dlnm_surfaces: dict[str, pd.DataFrame],
-                 grid: np.ndarray, reference: float, n_years: int) -> None:
+                 grid: np.ndarray, reference: float, n_years: int) -> dict:
     dlnam["curve"].to_csv(BENCH_DIR / "dlnam_chicago_temp_cum.csv", index=False)
     dlnam["surface"].to_csv(BENCH_DIR / "dlnam_chicago_temp_surf.csv", index=False)
     curves = {
@@ -411,7 +436,9 @@ def save_outputs(dlnam: dict, dlnm_curves: dict[str, pd.DataFrame],
         "dlnam_laplace": dlnam["laplace"],
         "dlnam_fit_summary": dlnam["fit_summary"],
         "r_environment": load_json_if_exists(BENCH_DIR / "r_environment.json"),
+        "hardware": _hardware(),
         "tdlnm_fit_status": load_json_if_exists(BENCH_DIR / "tdlnm_fit_status.json"),
+        "pen_diagnostics": load_json_if_exists(BENCH_DIR / "pen_diagnostics.json"),
         "curves": {
             name: {
                 "value": df["value"].tolist(),
@@ -430,163 +457,259 @@ def save_outputs(dlnam: dict, dlnm_curves: dict[str, pd.DataFrame],
             for name, df in surfaces.items()
         },
     }
-    save_json(RESULTS_DIR / "chicago_model_comparison.json", summary)
+    save_json(RESULT_JSON, summary)
+    return summary
 
 
-def _surface_matrix(df: pd.DataFrame):
-    piv = df.pivot(index="lag", columns="value", values="rr").sort_index()
-    vals = piv.columns.to_numpy(dtype=float)
-    lags = piv.index.to_numpy(dtype=float)
-    return vals, lags, piv.to_numpy(dtype=float)
+ORDER = ["DLNAM", "QAIC", "QBIC", "Penalised", "TDLNM"]
+OUT_STEM = "chicago_model_comparison"
 
 
-def plot_comparison(dlnam: dict, dlnm_curves: dict[str, pd.DataFrame],
-                    dlnm_surfaces: dict[str, pd.DataFrame]) -> list[Path]:
-    curves = {"DLNAM": dlnam["curve"], **dlnm_curves}
-    surfaces = {"DLNAM": dlnam["surface"], **dlnm_surfaces}
-    order = ["DLNAM", "QAIC", "QBIC", "Penalised", "TDLNM"]
-    n_models = len(order)
-    colours = bp.COLOURS
-    labels = bp.LABELS
-    surface_mats = {model: _surface_matrix(surfaces[model]) for model in order}
-    if SURFACE_SCALE_MODE not in {"shared", "per_model"}:
-        raise ValueError("SURFACE_SCALE_MODE must be 'shared' or 'per_model'")
-    if SURFACE_SCALE_MODE == "shared":
-        all_rr = np.concatenate([surface_mats[model][2].reshape(-1) for model in order])
-        shared_norm = bp.surface_norm(all_rr)
-        surface_norms = {model: shared_norm for model in order}
+PLOT_RC = {
+    **bp._RC,
+    "axes.grid": False,
+    "axes.labelsize": 8.5,
+    "xtick.labelsize": 7.5,
+    "ytick.labelsize": 7.5,
+}
+
+
+def _as_frame(entry: dict) -> pd.DataFrame:
+    return pd.DataFrame({key: np.asarray(value) for key, value in entry.items()})
+
+
+def _surface_matrix(entry: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    df = _as_frame(entry)
+    pivot = (
+        df.groupby(["lag", "value"], as_index=False)["rr"].mean()
+        .pivot(index="lag", columns="value", values="rr")
+        .sort_index()
+    )
+    values = pivot.columns.to_numpy(dtype=float)
+    lags = pivot.index.to_numpy(dtype=float)
+    rr = pivot.to_numpy(dtype=float)
+    return values, lags, rr
+
+
+def _lightened(colour: str, amount: float = 0.40) -> tuple[float, float, float]:
+    rgb = np.asarray(to_rgb(colour), dtype=float)
+    return tuple((1.0 - amount) * rgb + amount * np.ones(3))
+
+
+def _surface_facecolors(rr: np.ndarray, colour: str) -> np.ndarray:
+    """Single-hue model surface, with height shown by lightness."""
+    base = np.asarray(to_rgb(colour), dtype=float)
+    light = np.asarray(_lightened(colour, 0.74), dtype=float)
+    z = np.asarray(rr, dtype=float)
+    lo, hi = np.nanpercentile(z, [2, 98])
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        scaled = np.zeros_like(z)
     else:
-        surface_norms = {
-            model: bp.surface_norm(surface_mats[model][2].reshape(-1))
-            for model in order
-        }
-    cmap = bp.surface_cmap("chicago_rr")
-    curve_ymin = min(float(curves[model]["lo"].min()) for model in order)
-    curve_ymax = max(float(curves[model]["hi"].max()) for model in order)
+        scaled = np.clip((z - lo) / (hi - lo), 0.0, 1.0)
+    # Gentle nonlinear contrast: low RR stays pale, high RR reaches the model colour.
+    scaled = scaled ** 0.75
+    rgb = light[None, None, :] * (1.0 - scaled[..., None]) + base[None, None, :] * scaled[..., None]
+    alpha = np.full((*z.shape, 1), 0.92)
+    return np.concatenate([rgb, alpha], axis=-1)
+
+
+def _upsample_surface(
+    values: np.ndarray,
+    lags: np.ndarray,
+    rr: np.ndarray,
+    *,
+    n_values: int = 640,
+    n_lags: int = 440,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Bilinearly upsample a fitted surface for smoother 3D rendering only."""
+    dense_values = np.linspace(float(values.min()), float(values.max()), n_values)
+    dense_lags = np.linspace(float(lags.min()), float(lags.max()), n_lags)
+
+    by_value = np.vstack([
+        np.interp(dense_values, values, row)
+        for row in np.asarray(rr, dtype=float)
+    ])
+    dense_rr = np.vstack([
+        np.interp(dense_lags, lags, by_value[:, j])
+        for j in range(by_value.shape[1])
+    ]).T
+    return dense_values, dense_lags, dense_rr
+
+
+def _padded_limits(values: np.ndarray, fraction: float = 0.035) -> tuple[float, float]:
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    lo = float(finite.min())
+    hi = float(finite.max())
+    pad = fraction * max(hi - lo, 1e-9)
+    return lo - pad, hi + pad
+
+
+def _clean_3d_axis(
+    ax,
+    *,
+    first: bool,
+    xlim: tuple[float, float],
+    ylim: tuple[float, float],
+    zlim: tuple[float, float],
+) -> None:
+    ax.patch.set_alpha(0.0)
+    ax.set_proj_type("ortho")
+    ax.view_init(elev=24, azim=-48)
+    ax.zaxis._axinfo["juggled"] = (1, 2, 0)
+    ax.set_box_aspect((1.0, 1.0, 0.74))
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.set_zlim(*zlim)
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=4, integer=True))
+    ax.set_zticks(np.round(np.linspace(zlim[0], zlim[1], 3), 2))
+    ax.tick_params(axis="both", which="major", pad=-2, length=2)
+    ax.tick_params(axis="z", which="major", pad=-1, length=2)
+    ax.set_xlabel("Temperature", labelpad=-1)
+    ax.set_ylabel("Lag", labelpad=-2)
+    ax.set_zlabel("RR" if first else "", labelpad=0)   # matches OR in the malaria figure
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis.pane.set_facecolor((1, 1, 1, 0))
+        axis.pane.set_edgecolor((1, 1, 1, 0))
+        axis.line.set_color((0.18, 0.18, 0.18, 1))
+        axis._axinfo["grid"]["linewidth"] = 0.0
+        axis._axinfo["grid"]["color"] = (1, 1, 1, 0)
+        axis._axinfo["axisline"]["linewidth"] = 0.55
+
+
+def plot_comparison(payload: dict) -> list[Path]:
+    curves = {model: _as_frame(payload["curves"][model]) for model in ORDER}
+    surfaces = {model: _surface_matrix(payload["surfaces"][model]) for model in ORDER}
+    def _zlim(values):
+        finite = np.asarray(values, dtype=float).reshape(-1)
+        finite = finite[np.isfinite(finite)]
+        lo, hi = float(finite.min()), float(finite.max())
+        pad = 0.06 * max(hi - lo, 1e-9)
+        return (max(0.0, lo - pad), hi + pad)
+
+    if SURFACE_SCALE_MODE == "shared":
+        shared = _zlim(np.concatenate([rr.reshape(-1) for _, _, rr in surfaces.values()]))
+        zlims = {model: shared for model in surfaces}
+    else:
+        zlims = {model: _zlim(rr) for model, (_, _, rr) in surfaces.items()}
+
+    value_xlim = _padded_limits(np.concatenate([curves[model]["value"].to_numpy() for model in ORDER]), 0.0)
+    surface_xlims = {model: _padded_limits(values, 0.055) for model, (values, _, _) in surfaces.items()}
+    surface_ylims = {model: _padded_limits(lags, 0.055) for model, (_, lags, _) in surfaces.items()}
+
+    curve_ymin = min(float(curves[model]["lo"].min()) for model in ORDER)
+    curve_ymax = max(float(curves[model]["hi"].max()) for model in ORDER)
     curve_pad = 0.04 * max(curve_ymax - curve_ymin, 1e-9)
     curve_ylim = (max(0.0, curve_ymin - curve_pad), curve_ymax + curve_pad)
 
     with plt.rc_context(PLOT_RC):
-        if SURFACE_SCALE_MODE == "per_model":
-            fig = plt.figure(figsize=(15.2, 4.75))
-            gs = fig.add_gridspec(
-                2, n_models,
-                height_ratios=[1.0, 1.05],
-                wspace=0.14,
-                hspace=0.18,
-            )
-            curve_axes = np.array([fig.add_subplot(gs[0, i]) for i in range(n_models)])
-            surface_axes = np.array([
-                fig.add_subplot(gs[1, i], sharex=curve_axes[i]) for i in range(n_models)
-            ])
-            cbar_axes = None
-            cax = None
-        else:
-            fig = plt.figure(figsize=(15.2, 4.25))
-            gs = fig.add_gridspec(
-                2, n_models + 1,
-                width_ratios=[1.0] * n_models + [0.035],
-                height_ratios=[1.0, 1.05],
-                wspace=0.14,
-                hspace=0.18,
-            )
-            curve_axes = np.array([fig.add_subplot(gs[0, i]) for i in range(n_models)])
-            surface_axes = np.array([
-                fig.add_subplot(gs[1, i], sharex=curve_axes[i]) for i in range(n_models)
-            ])
-            cbar_axes = None
-            cax = fig.add_subplot(gs[:, n_models])
-        for ax, model in zip(curve_axes, order):
+        fig = plt.figure(figsize=(15.2, 6.55))
+        left, right, gap = 0.045, 0.99, 0.026
+        width = (right - left - gap * (len(ORDER) - 1)) / len(ORDER)
+        curve_y, curve_h = 0.635, 0.245
+        surface_y, surface_h = 0.225, 0.430
+        curve_axes = []
+        surface_axes = []
+        for i in range(len(ORDER)):
+            x0 = left + i * (width + gap)
+            curve_ax = fig.add_axes([x0, curve_y, width, curve_h])
+            surface_ax = fig.add_axes([x0, surface_y, width, surface_h], projection="3d")
+            curve_ax.set_zorder(5)
+            curve_ax.patch.set_facecolor("white")
+            curve_ax.patch.set_alpha(1.0)
+            surface_ax.set_zorder(1)
+            curve_axes.append(curve_ax)
+            surface_axes.append(surface_ax)
+
+        for index, (ax, model) in enumerate(zip(curve_axes, ORDER)):
             df = curves[model]
-            colour = colours[model]
+            colour = bp.COLOURS[model]
             ax.fill_between(df["value"], df["lo"], df["hi"],
                             color=colour, alpha=0.18, lw=0, zorder=1)
             ax.plot(df["value"], df["fit"], color=colour, lw=1.25, zorder=3)
             ax.axhline(1.0, color="0.88", lw=0.7, zorder=0)
-            ax.set_title(labels[model], fontsize=9, weight="bold", pad=6)
+            ax.set_title(bp.LABELS[model], fontsize=9, weight="bold", pad=6)
             ax.set_ylim(*curve_ylim)
+            ax.set_xlim(*value_xlim)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
             ax.margins(x=0)
-            ax.tick_params(axis="x", bottom=True, labelbottom=False, length=3)
+            ax.tick_params(axis="x", bottom=True, labelbottom=True, length=3)
             ax.spines["bottom"].set_visible(True)
-        curve_axes[0].set_ylabel("Cumulative RR", fontsize=8.5)
-        for ax in curve_axes[1:]:
-            ax.tick_params(labelleft=False)
+            ax.set_xlabel("Temperature")
+            ax.xaxis.label.set_color("0.10")
+            ax.yaxis.label.set_color("0.10")
+            if index == 0:
+                ax.set_ylabel("Cumulative RR")
+            else:
+                ax.tick_params(labelleft=False)
 
-        surface_image = None
-        surface_images = {}
-        for idx, (ax, model) in enumerate(zip(surface_axes, order)):
-            vals, lags, rr = surface_mats[model]
-            norm = surface_norms[model]
-            surface_image = ax.imshow(
-                rr,
-                extent=(float(vals.min()), float(vals.max()),
-                        float(lags.min()), float(lags.max())),
-                origin="lower",
-                aspect="auto",
-                interpolation="bicubic",
-                cmap=cmap,
-                norm=norm,
+        for index, (ax, model) in enumerate(zip(surface_axes, ORDER)):
+            values, lags, rr = surfaces[model]
+            plot_values, plot_lags, plot_rr = _upsample_surface(values, lags, rr)
+            x, y = np.meshgrid(plot_values, plot_lags)
+            colour = bp.COLOURS[model]
+            surface = ax.plot_surface(
+                x,
+                y,
+                plot_rr,
+                rstride=1,
+                cstride=1,
+                facecolors=_surface_facecolors(plot_rr, colour),
+                linewidth=0.0,
+                edgecolor="none",
+                antialiased=True,
+                shade=False,
             )
-            surface_images[model] = surface_image
-            ax.set_xlabel("Temperature", fontsize=8.5, labelpad=2)
-            ax.set_ylim(float(lags.min()), float(lags.max()))
-            ax.margins(x=0, y=0)
-        surface_axes[0].set_ylabel("Lag", fontsize=8.5)
-        for ax in surface_axes[1:]:
-            ax.tick_params(labelleft=False)
+            # ~1.4M quads as vector art is an 80 MB PDF; rasterise the surface
+            # itself and leave axes, ticks and text as vectors
+            surface.set_rasterized(True)
+            _clean_3d_axis(
+                ax,
+                first=index == 0,
+                xlim=surface_xlims[model],
+                ylim=surface_ylims[model],
+                zlim=zlims[model],
+            )
+
+        fig.suptitle("Chicago NMMAPS: Model Comparison",
+                     fontsize=13, weight="bold", x=0.5, y=0.982)
 
         line_h = Line2D([0], [0], color="0.18", lw=1.25, label="Estimate")
         band_h = Patch(facecolor="0.35", alpha=0.18, edgecolor="none",
                        label="95% CI")
-        if cax is not None:
-            cbar = fig.colorbar(surface_image, cax=cax)
-            cbar.set_label("RR", fontsize=8.5)
-            cbar.ax.tick_params(labelsize=7.5, width=0.6)
-            ticks = bp.surface_colorbar_ticks(surface_norms[order[-1]])
-            if ticks is not None:
-                cbar.set_ticks(ticks)
-                cbar.set_ticklabels(bp.format_rr_ticks(ticks))
-        fig.suptitle("Chicago NMMAPS: Model Comparison",
-                     fontsize=13, weight="bold", x=0.5, y=0.99)
-        bottom = 0.24 if SURFACE_SCALE_MODE == "per_model" else 0.15
-        right = 0.975 if SURFACE_SCALE_MODE == "per_model" else 0.958
-        fig.subplots_adjust(left=0.05, right=right, bottom=bottom, top=0.86)
+        fig.legend(
+            handles=[line_h, band_h],
+            loc="lower center",
+            ncol=2,
+            bbox_to_anchor=(0.5, 0.155),
+            fontsize=7.8,
+            columnspacing=1.15,
+            handletextpad=0.5,
+        )
 
-        if SURFACE_SCALE_MODE == "per_model":
-            for idx, model in enumerate(order):
-                pos = surface_axes[idx].get_position()
-                cbar_ax = fig.add_axes([pos.x0, pos.y0 - 0.115, pos.width, 0.018])
-                cbar = fig.colorbar(surface_images[model], cax=cbar_ax,
-                                    orientation="horizontal")
-                cbar.ax.tick_params(labelsize=6.5, width=0.5, length=2, pad=1)
-                cbar.outline.set_linewidth(0.5)
-                ticks = bp.surface_colorbar_ticks(surface_norms[model])
-                if ticks is not None:
-                    cbar.set_ticks(ticks)
-                    cbar.set_ticklabels(bp.format_rr_ticks(ticks))
-                if idx == 0:
-                    cbar.ax.set_ylabel("RR", fontsize=7.0, rotation=0,
-                                       labelpad=10, va="center")
-
-        legend_y = 0.035 if SURFACE_SCALE_MODE == "per_model" else 0.015
-        fig.legend(handles=[line_h, band_h], loc="lower center",
-                   ncol=2, bbox_to_anchor=(0.5, legend_y), fontsize=8)
-
-        paths = [
-            RESULTS_DIR / "chicago_model_comparison.png",
-            RESULTS_DIR / "chicago_model_comparison.pdf",
-        ]
+        paths = [RESULTS_DIR / f"{OUT_STEM}.png", RESULTS_DIR / f"{OUT_STEM}.pdf"]
         for path in paths:
-            fig.savefig(path, bbox_inches="tight", dpi=400)
+            fig.savefig(path, bbox_inches="tight", dpi=450)
         plt.close(fig)
     return paths
 
 
 def main() -> None:
+    if "--figures-only" in sys.argv:
+        if not RESULT_JSON.exists():
+            raise SystemExit(f"missing {RESULT_JSON}; run this script without "
+                             "--figures-only first")
+        paths = plot_comparison(json.loads(RESULT_JSON.read_text(encoding="utf-8")))
+        print("Chicago figure redrawn from saved results")
+        for path in paths:
+            print(f"  {path}")
+        return
+
     print("Chicago NMMAPS: model comparison\n")
     df, grid, reference, n_years = prepare_chicago_bench()
     run_dlnm_fits()
-    dlnam = fit_dlnam(df, grid)
+    dlnam = fit_dlnam(df, grid, reference)
     dlnm_curves = {
         "QAIC": load_dlnm_curve(""),
         "QBIC": load_dlnm_curve("qbic_"),
@@ -599,10 +722,11 @@ def main() -> None:
         "Penalised": load_dlnm_surface("pen_"),
         "TDLNM": load_dlnm_surface("tree_"),
     }
-    save_outputs(dlnam, dlnm_curves, dlnm_surfaces, grid, reference, n_years)
-    paths = plot_comparison(dlnam, dlnm_curves, dlnm_surfaces)
+    payload = save_outputs(dlnam, dlnm_curves, dlnm_surfaces, grid, reference,
+                           n_years)
+    paths = plot_comparison(payload)
     print("\nOutputs")
-    print(f"  {RESULTS_DIR / 'chicago_model_comparison.json'}")
+    print(f"  {RESULT_JSON}")
     for path in paths:
         print(f"  {path}")
 

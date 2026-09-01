@@ -50,14 +50,12 @@ from dlnam_sim.targets import (
 )
 from experiment_io import load_json_if_exists, results_dir, save_result_bundle
 
-print("all libraries loaded successfully!")
-print("Running simulations now...")
 
 SCENARIOS = ["dgp1", "dgp2", "dgp3", "dgp4"]
 LAG = 14
-N_REPS = 50
+N_REPS = 200
 N_OBS = 5000
-EPOCHS = 5000
+EPOCHS = 2500
 N_ENSEMBLE = 3
 N_SUBNETS = 3
 REF = 20.0
@@ -72,24 +70,15 @@ LEARNING_RATE = 8e-4
 MIN_LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-4
 GRAD_CLIP = 10.0
-# Comparator configuration follows the two studies these estimators come from.
-# Gasparrini et al. (2017) select the unpenalised cross-basis by AIC "among
-# combinations producing 1-10 df in each dimension" and give the penalised fit
-# ps smoothers of rank 10 per marginal; Mork and Wilson (2022) use the same
-# 1-10 df AIC search and rank 10. Matching them makes the comparison
-# representative of published practice rather than of an unusually wide search.
-# The lower bound is 2 rather than 1: a single degree of freedom leaves no
+# Cross-basis search grid for the criterion-selected DLNMs, and the fixed rank
+# for the penalised fit. The grid starts at 2: one degree of freedom leaves no
 # interior knot, so the marginal basis degenerates to a linear term.
 VALUE_DF_GRID = tuple(range(2, 11))
 LAG_DF_GRID = tuple(range(2, 11))
 PENALIZED_VALUE_DF = 10
 PENALIZED_LAG_DF = 10
-# Mork and Wilson (2022), section 5.1: "Thirty evenly spaced values ... were
-# designated as potential splits in the exposure dimension. After a burn-in
-# period of 5,000 iterations, we ran each model for 15,000 iterations, thinning
-# to every 10th draw", with A = 20 trees (their section 4.3). Set explicitly
-# rather than left to package defaults so the configuration is the published
-# one and not whatever the installed version happens to ship.
+# T-DLNM sampler settings, set explicitly so the fit does not depend on the
+# defaults of the installed dlmtree version.
 TDLNM_SETTINGS = {
     "burn": 5000,
     "iter": 15000,
@@ -210,6 +199,18 @@ def _r_timing_summary(r_timing, method, *, scenario=None):
     }
 
 
+def _surface_matrix(values, grid):
+    """Reshape a lag-major flattened surface into lag x exposure form."""
+    arr = np.asarray(values, dtype=float)
+    n_grid = len(grid)
+    if arr.size % n_grid != 0:
+        raise ValueError(
+            f"surface vector of length {arr.size} is incompatible with "
+            f"grid length {n_grid}"
+        )
+    return arr.reshape(arr.size // n_grid, n_grid)
+
+
 def _print_results(results, target, n_reps):
     print(f"\n=== {target}, value +/- MCSE (R={n_reps}) ===")
     for scenario in SCENARIOS:
@@ -313,6 +314,7 @@ def main():
     )
     target_results = {target: {} for target in targets}
     curves = {}
+    surface_curves = {}
     boundary = {}
     timing = {}
 
@@ -378,6 +380,18 @@ def main():
                 "truth": np.asarray(study.truth["x"]),
                 "DLNAM": study._stack("x", "mean").mean(0),
             }
+        surface_payload = None
+        if "surface" in dlnam_studies:
+            study = dlnam_studies["surface"]
+            surface_payload = {
+                "grid": np.asarray(grid),
+                "lags": np.arange(LAG + 1, dtype=float),
+                "truth": _surface_matrix(study.truth["x"], grid),
+                "DLNAM": _surface_matrix(
+                    study._stack("x", "mean").mean(0),
+                    grid,
+                ),
+            }
 
         for label, spec in R_MODELS.items():
             for target in targets:
@@ -413,11 +427,18 @@ def main():
                 )
                 if target == "cumulative" and curve_payload is not None:
                     curve_payload[label] = study._stack("x", "mean").mean(0)
+                if target == "surface" and surface_payload is not None:
+                    surface_payload[label] = _surface_matrix(
+                        study._stack("x", "mean").mean(0),
+                        grid,
+                    )
 
         for target in targets:
             target_results[target][scenario] = rows[target]
         if curve_payload is not None:
             curves[scenario] = curve_payload
+        if surface_payload is not None:
+            surface_curves[scenario] = surface_payload
 
     for target in targets:
         _print_results(target_results[target], target, args.n_reps)
@@ -431,6 +452,8 @@ def main():
     extra_payload = {}
     if "surface" in target_results:
         extra_payload["surface_results"] = target_results["surface"]
+    if surface_curves:
+        extra_payload["surface_curves"] = surface_curves
 
     output_dir = results_dir(here)
     output = output_dir / "mc_model_comparison.json"
@@ -501,7 +524,7 @@ def main():
                 curves=curves,
                 boundary=boundary,
                 stem="mc_model_comparison_cumulative",
-                title="Simulation Study: Cumulative Response",
+                title="Simulation Study: Model Comparison",
             )
             for path in paths:
                 print(f"saved {path}")
@@ -515,7 +538,7 @@ def main():
                 output_dir,
                 scenarios=list(SCENARIOS),
                 stem="mc_model_comparison_surface",
-                title="Simulation Study: Exposure-Lag Surface",
+                title="Simulation Study: Model Comparison (Surface)",
             )
             for path in paths:
                 print(f"saved {path}")

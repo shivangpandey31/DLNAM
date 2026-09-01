@@ -47,19 +47,28 @@ N_REPS = 50
 N_OBS = 5000
 EPOCHS = 5000
 N_ENSEMBLE = 3
+N_SUBNETS = 3
 REF = MX.REFERENCE
 SEED = 0
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BENCH_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mc_joint_data")
 RSCRIPT = "Rscript"
-# Identical to the single-exposure comparison: the 1-10 marginal degrees of
-# freedom used for the criterion-selected cross-basis in both Gasparrini et al.
-# (2017) and Mork and Wilson (2022), and the rank-10 marginals of the former.
+EXU_WEIGHT_MEAN = 1.5
+EXU_LAG_WEIGHT_MEAN = 2.5
+EXU_WEIGHT_STD = 0.5
+LEARNING_RATE = 7e-4
+MIN_LEARNING_RATE = 1e-4
+WEIGHT_DECAY = 1e-4
+SCHEDULE = "cosine"
+GRAD_CLIP = 10.0
+# Cross-basis search grid and penalised rank, as in the single-exposure
+# comparison. The grid starts at 2: one degree of freedom degenerates to a
+# linear marginal basis.
 VALUE_DF_GRID = tuple(range(2, 11))
 LAG_DF_GRID = tuple(range(2, 11))
 PENALIZED_VALUE_DF = 10
 PENALIZED_LAG_DF = 10
-# Mork and Wilson (2022) sec. 4.3/5.1, as in the single-exposure comparison.
+# T-DLNM sampler settings, as in the single-exposure comparison.
 TDLNM_SETTINGS = {
     "burn": 5000,
     "iter": 15000,
@@ -93,14 +102,14 @@ def surface_spec(lag):
             LayerSpec(128, mish()),
             LayerSpec(128, mish(), weight_init=tl(), bias_init=tl()),
         ],
-        num_subnets=N_ENSEMBLE,
+        num_subnets=N_SUBNETS,
         scaling="minmax",
         lag_max=lag,
         input_exu=ExUSpec(
             enabled=True,
-            weight_mean=1.5,
-            weight_mean_lag=2.5,
-            weight_std=0.5,
+            weight_mean=EXU_WEIGHT_MEAN,
+            weight_mean_lag=EXU_LAG_WEIGHT_MEAN,
+            weight_std=EXU_WEIGHT_STD,
             surface_strategy="concat",
             bias_init=exu_bias(),
         ),
@@ -345,6 +354,26 @@ def leakage_from_null(results):
 
 
 def main():
+    if "--figures-only" in sys.argv:
+        here = os.path.dirname(os.path.abspath(__file__))
+        out_dir = results_dir(here)
+        result_path = out_dir / "mc_joint.json"
+        if not result_path.exists():
+            raise SystemExit(f"missing {result_path}; run this script without --figures-only first")
+        bundle = json.loads(result_path.read_text())
+        plot_results = {name: bundle["results"][name] for name in PLOT_EXPOSURES if name in bundle["results"]}
+        plot_curves = {name: bundle["curves"][name] for name in PLOT_EXPOSURES if name in bundle.get("curves", {})}
+        plot_boundary = {name: bundle["boundary"][name] for name in PLOT_EXPOSURES if name in bundle.get("boundary", {})}
+        degradation = bundle.get("degradation")
+        if degradation is not None and hasattr(bp, "save_all_with_degradation"):
+            paths = bp.save_all_with_degradation(plot_results, out_dir, degradation=degradation, scenarios=PLOT_EXPOSURES, curves=plot_curves, boundary=plot_boundary, stem="mc_joint")
+        else:
+            paths = bp.save_all(plot_results, out_dir, scenarios=PLOT_EXPOSURES, curves=plot_curves, boundary=plot_boundary, stem="mc_joint")
+        print("Joint figure redrawn from saved results")
+        for path in paths:
+            print(f"  {path}")
+        return
+
     torch.manual_seed(SEED)
     np.random.seed(SEED)
     here = os.path.dirname(os.path.abspath(__file__))
@@ -386,11 +415,11 @@ def main():
     tcfg = TrainConfig(
         epochs=EPOCHS,
         n_ensemble=N_ENSEMBLE,
-        lr=7e-4,
-        lr_min=1e-4,
-        weight_decay=1e-4,
-        schedule="cosine",
-        grad_clip=10,
+        lr=LEARNING_RATE,
+        lr_min=MIN_LEARNING_RATE,
+        weight_decay=WEIGHT_DECAY,
+        schedule=SCHEDULE,
+        grad_clip=GRAD_CLIP,
     )
     dlnam_study = MonteCarloStudy(
         dgp=dgp,
@@ -506,8 +535,17 @@ def main():
         kind="joint_mc",
         settings={
             "n_reps": N_REPS, "n_obs": N_OBS, "epochs": EPOCHS,
-            "n_ensemble": N_ENSEMBLE, "lag": LAG, "reference": REF,
-            "seed": SEED, "value_range": list(MX.VALUE_RANGE),
+            "n_ensemble": N_ENSEMBLE, "n_subnets": N_SUBNETS,
+            "lag": LAG, "reference": REF,
+            "seed": SEED, "device": DEVICE, "value_range": list(MX.VALUE_RANGE),
+            "exu_weight_mean": EXU_WEIGHT_MEAN,
+            "exu_lag_weight_mean": EXU_LAG_WEIGHT_MEAN,
+            "exu_weight_std": EXU_WEIGHT_STD,
+            "learning_rate": LEARNING_RATE,
+            "minimum_learning_rate": MIN_LEARNING_RATE,
+            "weight_decay": WEIGHT_DECAY,
+            "schedule": SCHEDULE,
+            "gradient_clip": GRAD_CLIP,
             "effect_scale": MX.EFFECT_SCALE,
             "exposure_corr": MX.EXPOSURE_CORR,
             "value_df_grid": list(VALUE_DF_GRID),
@@ -547,6 +585,8 @@ def main():
     plot_curves = {name: curves[name] for name in PLOT_EXPOSURES}
     plot_boundary = {name: boundary[name] for name in PLOT_EXPOSURES}
     if degradation is not None and hasattr(bp, "save_all_with_degradation"):
+        # Plotting convention must match run_mc.py: 95% Monte Carlo confidence
+        # intervals (approximately 1.96 * MCSE) for all Monte Carlo error bars.
         paths = bp.save_all_with_degradation(
             plot_results,
             out_dir,

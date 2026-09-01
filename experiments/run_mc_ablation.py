@@ -326,14 +326,14 @@ def main():
             for path in paths:
                 print(f"saved {path}")
         if "surface" in target_results:
-            paths = bp.save_all(
+            # Same renderer as the model-comparison surface figure, so all three
+            # surface figures share one row-label layout.
+            paths = bp.save_metric_composite(
                 target_results["surface"],
                 output_dir,
                 scenarios=SCENARIOS,
-                curves=None,
-                boundary=boundary,
                 stem="mc_ablation_surface",
-                title="Simulation Study: Surface Architecture Ablation",
+                title="Simulation Study: Architecture Ablation (Surface)",
             )
             for path in paths:
                 print(f"saved {path}")

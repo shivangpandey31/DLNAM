@@ -22,15 +22,27 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Deterministic GPU reductions. Several backward kernels (notably the
+# categorical embedding) accumulate with atomics, so an identical seed does not
+# otherwise give an identical fit: reruns of this analysis moved minimum
+# mortality by ~0.6 C. Must be set before torch initialises cuBLAS.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import numpy as np
 import pandas as pd
 import torch
 
+torch.use_deterministic_algorithms(True)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgb
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.ticker import MaxNLocator
 
 from dlnam import (
     ActivationSpec,
@@ -63,6 +75,7 @@ DATA_PATH = Path(os.environ.get(
 ))
 BENCH_DIR = HERE / "real_malaria_data"
 RESULTS_DIR = results_dir(HERE)
+RESULT_JSON = RESULTS_DIR / "malaria_model_comparison.json"
 RSCRIPT = "Rscript"
 RSCRIPT_FILE = ROOT / "dlnam_bench" / "fit_malaria.R"
 
@@ -92,9 +105,14 @@ PRED_STEP = {
 TARGET_COL = "test_result"
 LAG_COUNT = 6
 LAG_MAX_INTERNAL = LAG_COUNT - 1
+# Lag enters the component as a continuous input, so the reported surface is
+# evaluated between the observed monthly lags. Six lags render as ridges; this
+# renders as a surface, and is a model evaluation rather than interpolation.
+SURFACE_LAG_POINTS = 51   # 1.0, 1.1, ..., 6.0 -- matches bylag = 0.1 in R
 N_ENSEMBLE = 3
 N_SUBNETS = 3
-EPOCHS = 25
+EPOCHS = 50    # At BATCH_FRACTION = 0.01 an epoch is 100 optimisation steps,
+               # so this is 5000 gradient steps.
 BATCH_FRACTION = 0.01
 CI_LEVEL = 0.95
 SEED = 0
@@ -111,18 +129,22 @@ DLNAM_INTERVAL = "laplace"
 # --------------------------------------------------------------------------
 
 
-PLOT_RC = {
-    "figure.dpi": 150,
-    "savefig.dpi": 400,
-    "font.size": 8.2,
-    "font.family": "sans-serif",
-    "axes.linewidth": 0.6,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "xtick.major.width": 0.6,
-    "ytick.major.width": 0.6,
-    "legend.frameon": False,
-}
+def _hardware() -> dict:
+    """Machine the fit actually ran on, so the reported environment is recorded
+    rather than asserted. Mirrors the block written by the scaling benchmark."""
+    import platform
+    hw = {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "logical_cpu_count": os.cpu_count(),
+        "torch_device": DEVICE,
+        "torch_version": torch.__version__,
+        "cuda_version": torch.version.cuda,
+    }
+    if torch.cuda.is_available():
+        hw["gpu"] = torch.cuda.get_device_name(0)
+    return hw
 
 
 def _lag_cols(exposure: str) -> list[str]:
@@ -370,9 +392,12 @@ def fit_dlnam(df: pd.DataFrame, grids: dict[str, np.ndarray],
             trainer.ensemble, link, EnsembleIntervalUQ(), centering
         )
         surface = surface_extractor.extract_surface(
-            exposure, grids[exposure], alpha=1.0 - CI_LEVEL
+            exposure, grids[exposure], alpha=1.0 - CI_LEVEL,
+            n_lag_points=SURFACE_LAG_POINTS,
         )
-        lags = np.arange(1, LAG_COUNT + 1, dtype=float)
+        # Scaled lags run over [0, 1] across LAG_MAX_INTERNAL steps, and the
+        # reported window is labelled 1..LAG_COUNT months.
+        lags = np.linspace(0.0, 1.0, SURFACE_LAG_POINTS) * LAG_MAX_INTERNAL + 1.0
         curves[exposure] = pd.DataFrame({
             "value": curve.grid_raw,
             "fit": curve.mean,
@@ -380,7 +405,7 @@ def fit_dlnam(df: pd.DataFrame, grids: dict[str, np.ndarray],
             "hi": curve.hi,
         })
         surfaces[exposure] = pd.DataFrame({
-            "value": np.tile(curve.grid_raw, LAG_COUNT),
+            "value": np.tile(curve.grid_raw, SURFACE_LAG_POINTS),
             "lag": np.repeat(lags, len(curve.grid_raw)),
             "rr": surface.mean.reshape(-1),
         })
@@ -406,30 +431,9 @@ def load_reference_outputs() -> tuple[dict[str, pd.DataFrame], dict[str, pd.Data
     return curves, surfaces
 
 
-def _surface_matrix(df: pd.DataFrame):
-    surface = df.loc[:, ["lag", "value", "rr"]].copy()
-    surface[["lag", "value"]] = surface[["lag", "value"]].round(12)
-    coordinates = ["lag", "value"]
-    if surface.duplicated(coordinates).any():
-        grouped = surface.groupby(coordinates, sort=False)["rr"]
-        spread = grouped.agg(lambda values: values.max() - values.min())
-        tolerance = 1e-10 * max(1.0, float(surface["rr"].abs().max()))
-        if float(spread.max()) > tolerance:
-            raise ValueError(
-                "surface contains conflicting predictions at one coordinate"
-            )
-        surface = grouped.mean().reset_index()
-    piv = surface.pivot(
-        index="lag", columns="value", values="rr"
-    ).sort_index()
-    vals = piv.columns.to_numpy(dtype=float)
-    lags = piv.index.to_numpy(dtype=float)
-    return vals, lags, piv.to_numpy(dtype=float)
-
-
 def save_outputs(dlnam: dict, ref_curves: dict[str, pd.DataFrame],
                  ref_surfaces: dict[str, pd.DataFrame],
-                 grids: dict[str, np.ndarray], refs: dict[str, float]) -> None:
+                 grids: dict[str, np.ndarray], refs: dict[str, float]) -> dict:
     for exposure in EXPOSURES:
         dlnam["curves"][exposure].to_csv(
             BENCH_DIR / f"dlnam_{exposure}_cum.csv", index=False
@@ -463,6 +467,7 @@ def save_outputs(dlnam: dict, ref_curves: dict[str, pd.DataFrame],
         },
         "dlnam_fit_summary": dlnam["fit_summary"],
         "r_environment": load_json_if_exists(BENCH_DIR / "r_environment.json"),
+        "hardware": _hardware(),
         "curves": {
             exposure: {
                 "DLNAM": dlnam["curves"][exposure].to_dict(orient="list"),
@@ -478,130 +483,319 @@ def save_outputs(dlnam: dict, ref_curves: dict[str, pd.DataFrame],
             for exposure in EXPOSURES
         },
     }
-    save_json(RESULTS_DIR / "malaria_model_comparison.json", summary)
+    save_json(RESULT_JSON, summary)
+    return summary
 
 
-def plot_comparison(dlnam: dict, ref_curves: dict[str, pd.DataFrame],
-                    ref_surfaces: dict[str, pd.DataFrame]) -> list[Path]:
-    dlnam_colour = bp.COLOURS["DLNAM"]
-    ref_colour = bp.COLOURS["QBIC"]
-    cmap = bp.surface_cmap("malaria_or")
-    n_exp = len(EXPOSURES)
+OUT_STEM = "malaria_model_comparison"
+MODELS = ["DLNAM", "DLNM"]
+MODEL_COLOURS = {"DLNAM": bp.COLOURS["DLNAM"], "DLNM": bp.COLOURS["QBIC"]}
 
-    surface_mats = {}
-    norms = {}
+
+PLOT_RC = {
+    **bp._RC,
+    "axes.grid": False,
+    # Matches the Chicago and DGP-surface figures so every panel in the paper
+    # is typeset at the same size.
+    "axes.labelsize": 8.5,
+    "xtick.labelsize": 7.5,
+    "ytick.labelsize": 7.5,
+}
+
+
+def _as_frame(entry: dict) -> pd.DataFrame:
+    return pd.DataFrame({key: np.asarray(value) for key, value in entry.items()})
+
+
+def _surface_matrix(entry: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    df = _as_frame(entry)
+    pivot = (
+        df.groupby(["lag", "value"], as_index=False)["rr"].mean()
+        .pivot(index="lag", columns="value", values="rr")
+        .sort_index()
+    )
+    values = pivot.columns.to_numpy(dtype=float)
+    lags = pivot.index.to_numpy(dtype=float)
+    rr = pivot.to_numpy(dtype=float)
+    return values, lags, rr
+
+
+def _lightened(colour: str, amount: float = 0.84) -> tuple[float, float, float]:
+    rgb = np.asarray(to_rgb(colour), dtype=float)
+    return tuple((1.0 - amount) * rgb + amount * np.ones(3))
+
+
+def _surface_facecolors(rr: np.ndarray, colour: str) -> np.ndarray:
+    """Single-hue surface, with height shown by lightness."""
+    base = np.asarray(to_rgb(colour), dtype=float)
+    light = np.asarray(_lightened(colour), dtype=float)
+    z = np.asarray(rr, dtype=float)
+    lo, hi = np.nanpercentile(z, [2, 98])
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        scaled = np.zeros_like(z)
+    else:
+        scaled = np.clip((z - lo) / (hi - lo), 0.0, 1.0)
+    scaled = scaled ** 1.35
+    rgb = light[None, None, :] * (1.0 - scaled[..., None]) + base[None, None, :] * scaled[..., None]
+    alpha = np.full((*z.shape, 1), 0.92)
+    return np.concatenate([rgb, alpha], axis=-1)
+
+
+def _upsample_surface(
+    values: np.ndarray,
+    lags: np.ndarray,
+    rr: np.ndarray,
+    *,
+    n_values: int = 360,
+    n_lags: int = 320,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Upsample a fitted surface for smoother 3D rendering only."""
+    dense_values = np.linspace(float(values.min()), float(values.max()), n_values)
+    dense_lags = np.linspace(float(lags.min()), float(lags.max()), n_lags)
+
+    try:
+        from scipy.interpolate import PchipInterpolator
+
+        along_value = PchipInterpolator(values, rr, axis=1)(dense_values)
+        dense_rr = PchipInterpolator(lags, along_value, axis=0)(dense_lags)
+        try:
+            from scipy.ndimage import gaussian_filter
+
+            dense_rr = gaussian_filter(dense_rr, sigma=(3.0, 0.8), mode="nearest")
+        except Exception:
+            pass
+        return dense_values, dense_lags, dense_rr
+    except Exception:
+        pass
+
+    by_value = np.vstack([
+        np.interp(dense_values, values, row)
+        for row in np.asarray(rr, dtype=float)
+    ])
+    dense_rr = np.vstack([
+        np.interp(dense_lags, lags, by_value[:, j])
+        for j in range(by_value.shape[1])
+    ]).T
+    return dense_values, dense_lags, dense_rr
+
+
+def _padded_limits(values: np.ndarray, fraction: float = 0.045) -> tuple[float, float]:
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    lo = float(finite.min())
+    hi = float(finite.max())
+    pad = fraction * max(hi - lo, 1e-9)
+    return lo - pad, hi + pad
+
+
+def _clean_3d_axis(
+    ax,
+    *,
+    xlim: tuple[float, float],
+    ylim: tuple[float, float],
+    zlim: tuple[float, float],
+    xlabel: str,
+    show_xlabel: bool,
+    show_ylabel: bool,
+    show_zlabel: bool,
+) -> None:
+    ax.patch.set_alpha(0.0)
+    ax.set_proj_type("ortho")
+    ax.view_init(elev=24, azim=-48)
+    ax.zaxis._axinfo["juggled"] = (1, 2, 0)
+    ax.set_box_aspect((1.0, 1.0, 0.74))
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.set_zlim(*zlim)
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=3))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
+    ax.set_zticks(np.round(np.linspace(zlim[0], zlim[1], 3), 2))
+    ax.tick_params(axis="both", which="major", pad=-2, length=2)
+    ax.tick_params(axis="z", which="major", pad=-1, length=2)
+    ax.set_xlabel(xlabel if show_xlabel else "", labelpad=-5)
+    ax.set_ylabel("Lag" if show_ylabel else "", labelpad=-6)
+    ax.set_zlabel("OR" if show_zlabel else "", labelpad=0)
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis.pane.set_facecolor((1, 1, 1, 0))
+        axis.pane.set_edgecolor((1, 1, 1, 0))
+        axis.line.set_color((0.18, 0.18, 0.18, 1))
+        axis._axinfo["grid"]["linewidth"] = 0.0
+        axis._axinfo["grid"]["color"] = (1, 1, 1, 0)
+        axis._axinfo["axisline"]["linewidth"] = 0.55
+
+
+def plot_comparison(payload: dict) -> list[Path]:
+    curves = {
+        exposure: {
+            model: _as_frame(payload["curves"][exposure][model])
+            for model in MODELS
+        }
+        for exposure in EXPOSURES
+    }
+    surfaces = {
+        exposure: {
+            model: _surface_matrix(payload["surfaces"][exposure][model])
+            for model in MODELS
+        }
+        for exposure in EXPOSURES
+    }
+
+    curve_ylim = {}
+    surface_zlim = {}
     for exposure in EXPOSURES:
-        dm = _surface_matrix(dlnam["surfaces"][exposure])
-        rm = _surface_matrix(ref_surfaces[exposure])
-        surface_mats[exposure] = {"DLNAM": dm, "DLNM": rm}
-        pooled = np.concatenate([dm[2].reshape(-1), rm[2].reshape(-1)])
-        norms[exposure] = bp.surface_norm(pooled)
+        lo = min(float(curves[exposure][m]["lo"].min()) for m in MODELS)
+        hi = max(float(curves[exposure][m]["hi"].max()) for m in MODELS)
+        pad = 0.05 * max(hi - lo, 1e-9)
+        curve_ylim[exposure] = (max(0.0, lo - pad), hi + pad)
+
+        pooled = np.concatenate([
+            surfaces[exposure][m][2].reshape(-1)
+            for m in MODELS
+        ])
+        zlo = float(np.nanmin(pooled))
+        zhi = float(np.nanmax(pooled))
+        zpad = 0.07 * max(zhi - zlo, 1e-9)
+        surface_zlim[exposure] = (max(0.0, zlo - zpad), zhi + zpad)
 
     with plt.rc_context(PLOT_RC):
-        fig = plt.figure(figsize=(15.2, 7.0))
-        gs = fig.add_gridspec(
-            3, n_exp,
-            height_ratios=[0.95, 1.0, 1.0],
-            wspace=0.18,
-            hspace=0.22,
-        )
-        curve_axes = [fig.add_subplot(gs[0, i]) for i in range(n_exp)]
-        dlnam_axes = [fig.add_subplot(gs[1, i], sharex=curve_axes[i])
-                      for i in range(n_exp)]
-        ref_axes = [fig.add_subplot(gs[2, i], sharex=curve_axes[i])
-                    for i in range(n_exp)]
+        fig = plt.figure(figsize=(15.2, 8.92))
+        left, right, gap = 0.0789, 0.9912, 0.0260
+        width = (right - left - gap * (len(EXPOSURES) - 1)) / len(EXPOSURES)
+        curve_y, curve_h = 0.7321, 0.1799
+        dlnam_y, surf_h = 0.4172, 0.3037
+        dlnm_y = 0.1651
 
-        images = {}
+        curve_axes = []
+        surface_axes = {model: [] for model in MODELS}
+        for i in range(len(EXPOSURES)):
+            x0 = left + i * (width + gap)
+            curve_ax = fig.add_axes([x0, curve_y, width, curve_h])
+            curve_ax.set_zorder(5)
+            curve_ax.patch.set_facecolor("white")
+            curve_ax.patch.set_alpha(1.0)
+            curve_axes.append(curve_ax)
+            for model, y0 in [("DLNAM", dlnam_y), ("DLNM", dlnm_y)]:
+                ax3 = fig.add_axes([x0, y0, width, surf_h], projection="3d")
+                ax3.set_zorder(1)
+                surface_axes[model].append(ax3)
+
         for i, exposure in enumerate(EXPOSURES):
             ax = curve_axes[i]
-            dc = dlnam["curves"][exposure]
-            rc = ref_curves[exposure]
-            for df, colour, z in [(rc, ref_colour, 2), (dc, dlnam_colour, 3)]:
+            for model, z in [("DLNM", 2), ("DLNAM", 3)]:
+                df = curves[exposure][model]
+                colour = MODEL_COLOURS[model]
                 ax.fill_between(df["value"], df["lo"], df["hi"],
-                                color=colour, alpha=0.14, lw=0, zorder=z - 1)
+                                color=colour, alpha=0.16, lw=0, zorder=z - 1)
                 ax.plot(df["value"], df["fit"], color=colour, lw=1.25, zorder=z)
             ax.axhline(1.0, color="0.88", lw=0.7, zorder=0)
             ax.set_title(EXPOSURE_LABELS[exposure], fontsize=9, weight="bold", pad=6)
-            ax.tick_params(axis="x", bottom=True, labelbottom=False, length=3)
-            ax.spines["bottom"].set_visible(True)
+            ax.set_ylim(*curve_ylim[exposure])
             ax.margins(x=0)
-            ax.set_ylim(bottom=0.0)
+            ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+            ax.tick_params(axis="x", bottom=True, labelbottom=True, length=3)
+            ax.spines["bottom"].set_visible(True)
+            ax.set_xlabel(EXPOSURE_LABELS[exposure])
             if i == 0:
-                ax.set_ylabel("Cumulative OR", fontsize=8.5)
+                ax.set_ylabel("Cumulative OR")
 
-            for row_ax, model in [(dlnam_axes[i], "DLNAM"),
-                                  (ref_axes[i], "DLNM")]:
-                vals, lags, rr = surface_mats[exposure][model]
-                im = row_ax.imshow(
-                    rr,
-                    extent=(float(vals.min()), float(vals.max()),
-                            float(lags.min()), float(lags.max())),
-                    origin="lower",
-                    aspect="auto",
-                    interpolation="bicubic",
-                    cmap=cmap,
-                    norm=norms[exposure],
+            for model in MODELS:
+                values, lags, rr = surfaces[exposure][model]
+                plot_values, plot_lags, plot_rr = _upsample_surface(values, lags, rr)
+                x_mesh, lag_mesh = np.meshgrid(plot_values, plot_lags)
+                ax3 = surface_axes[model][i]
+                surface = ax3.plot_surface(
+                    x_mesh,
+                    lag_mesh,
+                    plot_rr,
+                    rstride=1,
+                    cstride=1,
+                    facecolors=_surface_facecolors(plot_rr, MODEL_COLOURS[model]),
+                    linewidth=0.0,
+                    edgecolor="none",
+                    antialiased=False,
+                    shade=False,
                 )
-                images[exposure] = im
-                row_ax.set_ylim(float(lags.min()), float(lags.max()))
-                row_ax.margins(x=0, y=0)
-                if i == 0:
-                    row_ax.set_ylabel("Lag", fontsize=8.5)
-                else:
-                    row_ax.tick_params(labelleft=False)
-            dlnam_axes[i].tick_params(axis="x", bottom=True, labelbottom=False, length=3)
-            dlnam_axes[i].spines["bottom"].set_visible(True)
-            ref_axes[i].set_xlabel(EXPOSURE_LABELS[exposure], fontsize=8.5, labelpad=2)
+                surface.set_rasterized(True)
+                _clean_3d_axis(
+                    ax3,
+                    xlim=_padded_limits(values, 0.045),
+                    ylim=_padded_limits(lags, 0.045),
+                    zlim=surface_zlim[exposure],
+                    xlabel=EXPOSURE_LABELS[exposure],
+                    show_xlabel=True,
+                    show_ylabel=True,
+                    show_zlabel=i == 0,
+                )
 
-        curve_axes[0].text(-0.28, 0.5, "Comparison", transform=curve_axes[0].transAxes,
-                           rotation=90, ha="center", va="center",
-                           fontsize=9, weight="bold")
-        dlnam_axes[0].text(-0.28, 0.5, "DLNAM", transform=dlnam_axes[0].transAxes,
-                           rotation=90, ha="center", va="center",
-                           fontsize=9, weight="bold")
-        ref_axes[0].text(-0.28, 0.5, "DLNM", transform=ref_axes[0].transAxes,
-                         rotation=90, ha="center", va="center",
-                         fontsize=9, weight="bold")
+        curve_axes[0].text(
+            -0.28,
+            0.5,
+            "Comparison",
+            transform=curve_axes[0].transAxes,
+            rotation=90,
+            ha="center",
+            va="center",
+            fontsize=9,
+            weight="bold",
+        )
+        surface_axes["DLNAM"][0].text2D(
+            -0.28,
+            0.55,
+            "DLNAM",
+            transform=surface_axes["DLNAM"][0].transAxes,
+            rotation=90,
+            ha="center",
+            va="center",
+            fontsize=9,
+            weight="bold",
+        )
+        surface_axes["DLNM"][0].text2D(
+            -0.28,
+            0.55,
+            "DLNM",
+            transform=surface_axes["DLNM"][0].transAxes,
+            rotation=90,
+            ha="center",
+            va="center",
+            fontsize=9,
+            weight="bold",
+        )
 
-        fig.suptitle("Malaria Data: Model Comparison",
-                     fontsize=13, weight="bold", x=0.5, y=0.985)
-        fig.subplots_adjust(left=0.055, right=0.985, bottom=0.24, top=0.90)
+        fig.suptitle("DHS/MIS Malaria: Model Comparison",
+                     fontsize=13, weight="bold", x=0.5351, y=0.9868)
 
-        for i, exposure in enumerate(EXPOSURES):
-            pos = ref_axes[i].get_position()
-            cbar_ax = fig.add_axes([pos.x0, pos.y0 - 0.085, pos.width, 0.018])
-            cbar = fig.colorbar(images[exposure], cax=cbar_ax,
-                                orientation="horizontal")
-            cbar.ax.tick_params(labelsize=6.5, width=0.5, length=2, pad=1)
-            cbar.outline.set_linewidth(0.5)
-            ticks = bp.surface_colorbar_ticks(norms[exposure])
-            if ticks is not None:
-                cbar.set_ticks(ticks)
-                cbar.set_ticklabels(bp.format_rr_ticks(ticks))
-            if i == 0:
-                cbar.ax.set_ylabel("OR", fontsize=7.0, rotation=0,
-                                   labelpad=10, va="center")
-
-        line_d = Line2D([0], [0], color=dlnam_colour, lw=1.25, label="DLNAM")
-        line_r = Line2D([0], [0], color=ref_colour, lw=1.25,
-                        label="DLNM")
+        line_d = Line2D([0], [0], color=MODEL_COLOURS["DLNAM"], lw=1.25, label="DLNAM")
+        line_r = Line2D([0], [0], color=MODEL_COLOURS["DLNM"], lw=1.25, label="DLNM")
         band_h = Patch(facecolor="0.35", alpha=0.18, edgecolor="none",
                        label="95% CI")
-        fig.legend(handles=[line_d, line_r, band_h],
-                   loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.08),
-                   fontsize=8)
+        fig.legend(
+            handles=[line_d, line_r, band_h],
+            loc="lower center",
+            ncol=3,
+            bbox_to_anchor=(0.5351, 0.1137),
+            fontsize=7.8,
+            columnspacing=1.15,
+            handletextpad=0.5,
+        )
 
-        paths = [
-            RESULTS_DIR / "malaria_model_comparison.png",
-            RESULTS_DIR / "malaria_model_comparison.pdf",
-        ]
+        paths = [RESULTS_DIR / f"{OUT_STEM}.png", RESULTS_DIR / f"{OUT_STEM}.pdf"]
         for path in paths:
-            fig.savefig(path, bbox_inches="tight", dpi=400)
+            fig.savefig(path, bbox_inches="tight", dpi=450)
         plt.close(fig)
     return paths
 
 
 def main() -> None:
+    if "--figures-only" in sys.argv:
+        if not RESULT_JSON.exists():
+            raise SystemExit(f"missing {RESULT_JSON}; run this script without "
+                             "--figures-only first")
+        paths = plot_comparison(json.loads(RESULT_JSON.read_text(encoding="utf-8")))
+        print("DHS/MIS Malaria figure redrawn from saved results")
+        for path in paths:
+            print(f"  {path}")
+        return
+
     print("Malaria data: exposure-specific lag model comparison\n")
     df = load_malaria(DATA_PATH)
     grids, refs = _grid_and_reference(df)
@@ -615,11 +809,11 @@ def main() -> None:
     run_reference_dlnm()
     dlnam = fit_dlnam(df, grids, refs)
     ref_curves, ref_surfaces = load_reference_outputs()
-    save_outputs(dlnam, ref_curves, ref_surfaces, grids, refs)
-    paths = plot_comparison(dlnam, ref_curves, ref_surfaces)
+    payload = save_outputs(dlnam, ref_curves, ref_surfaces, grids, refs)
+    paths = plot_comparison(payload)
 
     print("\nOutputs")
-    print(f"  {RESULTS_DIR / 'malaria_model_comparison.json'}")
+    print(f"  {RESULT_JSON}")
     for path in paths:
         print(f"  {path}")
 

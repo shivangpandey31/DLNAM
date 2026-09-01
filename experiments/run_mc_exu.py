@@ -286,19 +286,19 @@ def main():
                 curves=curves,
                 boundary=boundary,
                 stem="mc_exu_cumulative",
-                title="Simulation Study: ExU Encoder Comparison",
+                title="Simulation Study: ExU Comparison",
             )
             for path in paths:
                 print(f"saved {path}")
         if "surface" in target_results:
-            paths = bp.save_all(
+            # Same renderer as the model-comparison surface figure, so all three
+            # surface figures share one row-label layout.
+            paths = bp.save_metric_composite(
                 target_results["surface"],
                 output_dir,
                 scenarios=SCENARIOS,
-                curves=None,
-                boundary=boundary,
                 stem="mc_exu_surface",
-                title="Simulation Study: Surface ExU Encoder Comparison",
+                title="Simulation Study: ExU Comparison (Surface)",
             )
             for path in paths:
                 print(f"saved {path}")
