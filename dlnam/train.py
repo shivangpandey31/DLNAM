@@ -126,7 +126,11 @@ class Trainer:
 
         for epoch in range(t.epochs + 1):
             perm = torch.randperm(n, device=self.device) if bs < n else None
-            ep_loss = None
+            # Sample-weighted running mean over the epoch, so a minibatch run
+            # reports the epoch objective rather than a single batch: at
+            # batch_fraction=0.01 the last batch is a 1% sample. Bookkeeping
+            # only -- nothing here feeds the gradient.
+            ep_sum, ep_seen = None, 0
             for s in range(n_steps):
                 bi, by = self._batch(inputs, y, perm, s, bs, n)
                 opt.zero_grad(set_to_none=True)
@@ -142,7 +146,11 @@ class Trainer:
                 opt.step()
                 if sched is not None:
                     sched.step()
-                ep_loss = per_m.detach()
+                nb = int(by.shape[0])
+                contrib = per_m.detach() * nb
+                ep_sum = contrib if ep_sum is None else ep_sum + contrib
+                ep_seen += nb
+            ep_loss = ep_sum / max(ep_seen, 1)
             for i in range(len(self.ensemble)):
                 hist[i].append((epoch, float(ep_loss[i])))
             if diagnostics_every and epoch and epoch % diagnostics_every == 0:
@@ -157,11 +165,8 @@ class Trainer:
             sd = {k: v[i].detach() for k, v in params.items()}
             sd.update({k: v[i].detach() for k, v in buffers.items()})
             missing, unexpected = m.load_state_dict(sd, strict=False)
-            # strict=False silently ignores name mismatches; if the stacked-state
-            # keys don't match the module's parameter names, the TRAINED weights are
-            # never written back and the member keeps its INITIALISATION -- which
-            # silently corrupts anything reading the params afterwards (e.g. the
-            # last-layer Laplace covariance). Surface it loudly.
+            # strict=False ignores key mismatches, which would leave the member
+            # holding its initial weights instead of the trained ones.
             if missing or unexpected:
                 raise RuntimeError(
                     "vmap writeback key mismatch: trained weights not applied. "

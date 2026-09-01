@@ -7,7 +7,7 @@ simulation / Monte-Carlo machinery a true add-on: deleting `dlnam_sim` leaves
 the core fully functional, and the core has zero awareness it exists.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 from .config import (
     ActivationSpec, TransformSpec, SoftCapSpec, ExUSpec, LayerSpec,
@@ -36,7 +36,9 @@ __all__ = [
     "TermSpec", "InitSpec", "SurfaceTermSpec", "SmoothTermSpec", "TrendTermSpec",
     "CategoricalTermSpec", "ModelConfig", "TrainConfig", "broadcast_terms",
     "Link", "LogLink", "LogitLink", "IdentityLink", "make_link",
-    "AdditiveTerm", "Centering", "EffectCurve", "DLNAM", "Trainer", "DataProcessor", "PreparedData", "PerformanceEvaluator", "ResultVisualizer",
+    "AdditiveTerm", "Centering", "EffectCurve", "DLNAM", "Trainer",
+    "DataProcessor", "PreparedData", "PerformanceEvaluator",
+    "ResultVisualizer",
     "SurfaceTerm", "SmoothTerm", "TrendTerm", "CategoricalTerm",
     "EffectEstimate", "EffectExtractor", "UncertaintyMethod",
     "IntervalUQ", "ConfidenceIntervalUQ", "PredictionIntervalUQ",

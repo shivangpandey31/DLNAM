@@ -93,8 +93,9 @@ class ExUSpec:
 
     weight_mean      mean of the log-domain weight init. Larger values give
                      sharper initial features.
-    weight_mean_lag  surface terms only: separate mean for the LAG axis ExU
-                     None -> reuse weight_mean.
+    weight_mean_lag  surface terms only: separate mean for the LAG axis ExU.
+                     Defaults to the value used throughout, which is sharper
+                     than the exposure axis; None -> reuse weight_mean.
     weight_std       std of the log-domain weight init.
     enabled          False -> linear input layer instead of ExU (and, for
                      surfaces, a linear+sigmoid lag encoder).
@@ -102,7 +103,7 @@ class ExUSpec:
     """
     enabled: bool = True
     weight_mean: float = 1.5
-    weight_mean_lag: Optional[float] = None
+    weight_mean_lag: Optional[float] = 2.5
     weight_std: float = 0.5
     surface_strategy: SurfaceEncoderStrategy = "concat"
     bias_init: Optional["InitSpec"] = None   # None -> uniform(0,1) (ExU default)
@@ -194,8 +195,10 @@ class TermSpec:
     constrain_subnet_weights : if True, the subnet mixing weights are softmaxed
                    into an exact CONVEX combination (sum to 1, non-negative);
                    if False (default) they are unconstrained real weights.
-    mix_init     : initialisation for the subnet mixing weights. None ->
-                   constant 1/num_subnets, which makes the contributions sum to
+    mix_init     : initialisation for the subnet mixing weights. Defaults to
+                   the N(0, 0.1^2) draw used throughout, which breaks symmetry
+                   between subnetworks at initialisation. Passing None instead
+                   gives constant 1/num_subnets, making the contributions sum to
                    ~1 at init (raw) or exactly 1/S each (convex), aligning with a
                    single-subnet DLNAM at S=1.
     """
@@ -205,7 +208,8 @@ class TermSpec:
     penalty: float = 0.0
     subnet_dropout: float = 0.0
     constrain_subnet_weights: bool = False
-    mix_init: Optional[InitSpec] = None
+    mix_init: Optional[InitSpec] = field(
+        default_factory=lambda: InitSpec(scheme="normal", mean=0.0, std=0.1))
 
     def __post_init__(self):
         if float(self.penalty) < 0.0:
@@ -216,10 +220,33 @@ class TermSpec:
 
 @dataclass(frozen=True)
 class SurfaceTermSpec(TermSpec):
-    """Exposure value x lag surface (the DLNM piece)."""
+    """Exposure value x lag surface (the DLNM piece).
+
+    roughness_value / roughness_lag
+        Curvature penalties on the fitted surface, applied during training as
+        the mean squared second difference of f(value, lag) along each margin,
+        evaluated on a fixed grid in scaled coordinates. This is the direct
+        analogue of the difference penalty of a P-spline, applied to a learned
+        component instead of a basis expansion. Both default to 0 (off), which
+        reproduces the unpenalised model exactly.
+    roughness_grid
+        Number of value points in that grid; the lag axis uses the model's own
+        lag grid. Penalties are means rather than sums, so their scale does not
+        depend on this.
+    """
     lag_max: int = 30
     # ExU for the value/lag input layer; surface_strategy lives inside it.
     input_exu: Optional[ExUSpec] = field(default_factory=ExUSpec)
+    roughness_value: float = 0.0
+    roughness_lag: float = 0.0
+    roughness_grid: int = 41
+
+    def __post_init__(self):
+        super().__post_init__()
+        if float(self.roughness_value) < 0.0 or float(self.roughness_lag) < 0.0:
+            raise ValueError("SurfaceTermSpec roughness weights must be non-negative")
+        if int(self.roughness_grid) < 3:
+            raise ValueError("SurfaceTermSpec.roughness_grid must be at least 3")
 
 
 @dataclass(frozen=True)
@@ -270,9 +297,9 @@ class TrainConfig:
     batch_fraction: Optional[float] = None     # None -> full batch
     n_ensemble: int = 3
     loss: Literal["poisson", "bernoulli"] = "poisson"
-    grad_clip: Optional[float] = None
+    grad_clip: Optional[float] = 10.0
     diagnostics_every: Optional[int] = None    # None -> ten diagnostics per fit; 0 disables
-    seed: int = 123
+    seed: int = 0
 
     def __post_init__(self):
         if self.epochs < 0:

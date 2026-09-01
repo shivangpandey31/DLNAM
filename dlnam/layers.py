@@ -27,8 +27,11 @@ def init_linear(linear, weight_init=None, bias_init=None):
 
 
 def init_mix(spec):
-    """Subnet mixing-weight init: spec.mix_init if given, else constant 1/S
-    (contributions sum to ~1 at init; aligns with single-subnet DLNAM at S=1)."""
+    """Subnet mixing-weight init: spec.mix_init if given, else constant 1/S.
+
+    The spec default is an N(0, 0.1^2) draw, so the 1/S branch is reached only
+    when mix_init is set to None explicitly (contributions then sum to ~1 at
+    init; aligns with a single-subnet DLNAM at S=1)."""
     S = spec.num_subnets
     t = torch.empty(S)
     if getattr(spec, "mix_init", None) is not None:
@@ -45,9 +48,12 @@ def apply_subnet_dropout(weights: torch.Tensor, p: float, training: bool) -> tor
         return weights
     keep = 1.0 - p
     mask = (torch.rand_like(weights) < keep).to(weights.dtype)
-    if torch.count_nonzero(mask) == 0:
-        idx = torch.randint(mask.numel(), (), device=mask.device)
-        mask[idx] = 1.0
+    # Guard against dropping every subnet. Written functionally rather than as a
+    # Python branch so the ensemble trainer can vmap over members: a data-dependent
+    # `if` on a traced tensor is not supported there.
+    none_kept = (mask.sum(dim=-1, keepdim=True) == 0).to(weights.dtype)
+    first = (torch.arange(mask.shape[-1], device=mask.device) == 0).to(weights.dtype)
+    mask = mask + none_kept * first
     return weights * mask / keep
 
 

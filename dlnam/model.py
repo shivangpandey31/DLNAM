@@ -60,6 +60,9 @@ class DLNAM(nn.Module):
             weight = float(getattr(getattr(term, "spec", None), "penalty", 0.0))
             if weight > 0.0:
                 penalty = penalty + weight * contribution.pow(2).mean()
+            rough = getattr(term, "roughness_penalty", None)
+            if rough is not None and getattr(term, "_penalise", False):
+                penalty = penalty + rough()
         response = self.link.inverse(eta)
         if return_penalty:
             return response, penalty

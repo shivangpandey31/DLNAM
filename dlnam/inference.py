@@ -165,14 +165,9 @@ class IntervalUQ(UncertaintyMethod):
                                  "(precomputed per-grid-point SE on the log scale)")
             se_log = np.asarray(laplace_se, dtype=float)
             if self.se_source == "laplace_ensemble":
-                # Law of total variance across the two sources the estimator
-                # actually has: the last-layer Laplace SE is a WITHIN-member
-                # sampling variance computed with the learned representation held
-                # fixed, and members differ precisely in that representation, so
-                # their pointwise spread estimates the term the conditioning
-                # omits. Population (ddof=0) spread, matching the convention in
-                # EffectEstimate.log_se so the shipped interval and the
-                # StudyResult diagnostic are the same quantity.
+                # Add the within-member Laplace variance and the between-member
+                # spread. Population (ddof=0) spread, matching the convention in
+                # EffectEstimate.log_se.
                 between = np.std(log_effect_per_member, axis=0)
                 se_log = np.sqrt(se_log ** 2 + between ** 2)
             lo = _effect_to_response(link, log_mean - z * se_log)
@@ -405,12 +400,19 @@ class EffectExtractor:
     def extract_surface(self,
                         term_name: str,
                         grid_raw: Optional[np.ndarray] = None,
-                        alpha: float = 0.05) -> EffectEstimate:
+                        alpha: float = 0.05,
+                        n_lag_points: Optional[int] = None) -> EffectEstimate:
         """Pointwise value-by-lag surface effect with matching Laplace CI.
 
         The estimand is f(x, lag) - f(ref, lag), returned on the response scale
         with arrays shaped (n_lags, n_grid). This is distinct from `extract`,
         which returns the cumulative-over-lag curve for a surface term.
+
+        `n_lag_points` evaluates the component on that many equally spaced
+        scaled lags in [0, 1] instead of the observed lag grid. The lag is a
+        continuous input to the component, so this is a model evaluation, not
+        interpolation; it exists so that a short window renders as a surface
+        rather than as a handful of ridges.
         """
         term0 = self.ensemble[0].term(term_name)
         if not hasattr(term0, "per_lag_log_rr"):
@@ -420,8 +422,18 @@ class EffectExtractor:
         grid_raw = np.asarray(grid_raw, dtype=float)
         ref = self._laplace_reference(term0)
 
+        lag_scaled = None
+        if n_lag_points is not None:
+            if needs_laplace(getattr(self.uq, "se_source", None)):
+                # The last-layer design is built on the observed lag grid, so a
+                # denser grid would not line up with it.
+                raise ValueError(
+                    "n_lag_points is not supported with a Laplace interval; "
+                    "use an ensemble interval for densely evaluated surfaces")
+            lag_scaled = np.linspace(0.0, 1.0, int(n_lag_points))
+
         per_member = np.asarray([
-            model.term(term_name).per_lag_log_rr(grid_raw, ref)
+            model.term(term_name).per_lag_log_rr(grid_raw, ref, lag_scaled)
             for model in self.ensemble
         ])                                                   # (M, n_lags, G)
         log_mean = np.mean(per_member, axis=0)
