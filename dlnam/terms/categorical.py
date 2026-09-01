@@ -1,8 +1,8 @@
 """
 terms/categorical.py — categorical term.
 
-Embedding-based (not the wasteful one-hot + matmul of the original): with an
-empty hidden stack it is a pure lookup table (one learned scalar per level);
+Embedding-based rather than one-hot plus matmul: with an empty hidden stack it
+is a pure lookup table (one learned scalar per level);
 with hidden layers it is Embedding -> MLP -> scalar. The embedding is zero-
 initialised so the term starts at no effect, and the global level is carried by
 the model intercept (the reference level is absorbed there).

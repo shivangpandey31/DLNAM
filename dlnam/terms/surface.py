@@ -182,6 +182,17 @@ class SurfaceTerm(AdditiveTerm):
         )
         self.mix = nn.Parameter(init_mix(spec))
         self.register_buffer("lag_grid", torch.linspace(0.0, 1.0, spec.lag_max + 1))
+        # Fixed grid in scaled coordinates for the curvature penalty. Registered
+        # as a buffer so it moves with the module and is carried by the stacked
+        # ensemble state under torch.func; it holds no parameters.
+        self._penalise = (float(spec.roughness_value) > 0.0
+                          or float(spec.roughness_lag) > 0.0)
+        if self._penalise:
+            gv = torch.linspace(0.0, 1.0, int(spec.roughness_grid))
+            vv = gv.repeat_interleave(spec.lag_max + 1).unsqueeze(1)
+            ll = torch.linspace(0.0, 1.0, spec.lag_max + 1).repeat(
+                int(spec.roughness_grid)).unsqueeze(1)
+            self.register_buffer("rough_grid", torch.cat([vv, ll], dim=1))
         # scaling params, set by fit_scaling
         self._loc = 0.0
         self._scale = 1.0
@@ -224,6 +235,35 @@ class SurfaceTerm(AdditiveTerm):
         vl = torch.cat([v, l], dim=1)                              # (B*Lp1, 2)
         mixed = self._mixed(vl)                                    # (B*Lp1, 1)
         return mixed.view(B, Lp1).sum(dim=1, keepdim=True)         # (B, 1)
+
+    def roughness_penalty(self) -> torch.Tensor:
+        """Mean squared second difference of the fitted surface, per margin.
+
+        Evaluated on the fixed scaled grid, so it constrains the function the
+        model reports rather than its parameters -- the same object a P-spline
+        difference penalty acts on. Returns a scalar; zero when both weights
+        are off.
+        """
+        if not self._penalise:
+            return self.mix.new_zeros(())
+        G = int(self.spec.roughness_grid)
+        Lp1 = int(self.lag_max) + 1
+        surface = self._mixed(self.rough_grid).view(G, Lp1)   # (value, lag)
+        out = self.mix.new_zeros(())
+        wv = float(self.spec.roughness_value)
+        wl = float(self.spec.roughness_lag)
+        # Divide by the squared grid spacing so each term approximates the mean
+        # squared second derivative rather than a raw difference. Without this
+        # the weight is expressed in units of "squared difference on this grid"
+        # and changes meaning with the resolution, and between the two margins,
+        # whose spacings differ (1/(G-1) against 1/lag_max).
+        hv2 = (1.0 / max(G - 1, 1)) ** 2
+        hl2 = (1.0 / max(self.lag_max, 1)) ** 2
+        if wv > 0.0 and G >= 3:
+            out = out + wv * (torch.diff(surface, n=2, dim=0) / hv2).pow(2).mean()
+        if wl > 0.0 and Lp1 >= 3:
+            out = out + wl * (torch.diff(surface, n=2, dim=1) / hl2).pow(2).mean()
+        return out
 
     def _last_layer_design(self, x: torch.Tensor) -> torch.Tensor:
         """Exact design for the fixed-representation final linear layers."""
@@ -275,14 +315,23 @@ class SurfaceTerm(AdditiveTerm):
             cum = self._mixed(vl).view(G, Lp1).sum(dim=1)         # (G,)
         return cum.cpu().numpy()
 
-    def per_lag_log_rr(self, grid_raw: np.ndarray, ref_raw: float) -> np.ndarray:
+    def per_lag_log_rr(self, grid_raw: np.ndarray, ref_raw: float,
+                       lag_scaled: np.ndarray | None = None) -> np.ndarray:
         """Per-lag log-RR relative to a reference value: returns (n_lags, G),
         row k = log f(value, lag_k) - log f(ref, lag_k). Used for the lag
-        surface (contour / 3-D) plot."""
+        surface (contour / 3-D) plot.
+
+        `lag_scaled` overrides the observed lag grid with an arbitrary set of
+        scaled lags in [0, 1]. The component takes the lag as a continuous
+        network input, so evaluating between observed lags is a genuine model
+        evaluation rather than interpolation of a coarse surface -- which is
+        what a plot needs when the window has few lags.
+        """
         gs = self._to_scaled(grid_raw)
         rs = float(self._to_scaled(np.asarray([ref_raw]))[0])
         G = len(gs)
-        lags = self.lag_grid.detach().cpu().numpy()
+        lags = (self.lag_grid.detach().cpu().numpy() if lag_scaled is None
+                else np.asarray(lag_scaled, dtype=float))
         Lp1 = len(lags)
         device = self.lag_grid.device
         vv = torch.tensor(np.tile(gs, Lp1), dtype=torch.float32, device=device).view(-1, 1)

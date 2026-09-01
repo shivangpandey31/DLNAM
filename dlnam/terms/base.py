@@ -39,8 +39,8 @@ class Centering:
     method:
       'reference' — subtract the effect at a specific raw input value (the
                     DLNM cenvalue convention). `value` required.
-      'median'    — subtract the effect at the data median (NOT, as in the old
-                    code, the middle of an arbitrary evaluation grid).
+      'median'    — subtract the effect at the data median, not at the middle
+                    of the evaluation grid.
       'mean'      — subtract the mean effect over the training inputs.
       'custom'    — alias of 'reference' with an explicit value.
     """
