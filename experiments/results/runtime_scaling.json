@@ -1,0 +1,4738 @@
+{
+  "kind": "runtime_scaling",
+  "settings": {
+    "exposure_counts": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "timing_repeats": 3,
+    "n_obs": 5000,
+    "lag": 14,
+    "epochs": 2500,
+    "n_ensemble": 3,
+    "n_subnets": 3,
+    "reference": 20.0,
+    "seed": 0,
+    "exu_weight_mean": 1.5,
+    "exu_lag_weight_mean": 2.5,
+    "exu_weight_std": 0.5,
+    "learning_rate": 0.0008,
+    "min_learning_rate": 0.0001,
+    "weight_decay": 0.0001,
+    "grad_clip": 10.0,
+    "value_df_grid": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "lag_df_grid": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "penalized_value_df": 10,
+    "penalized_lag_df": 10,
+    "tdlnm": {
+      "burn": 5000,
+      "iter": 15000,
+      "thin": 10,
+      "attempts": 10,
+      "exposure_splits": 30,
+      "trees": 20,
+      "adjust_value_df": 4,
+      "adjust_lag_df": 4
+    },
+    "timer_scope": "model construction, preprocessing, fitting, uncertainty estimation, and cumulative-effect extraction",
+    "memory_scope": "peak resident memory of the isolated process tree plus peak allocated CUDA memory for DLNAM",
+    "memory_poll_seconds": 0.05,
+    "data_generation_timed": false,
+    "process_startup_timed": false
+  },
+  "models": [
+    "DLNAM",
+    "QAIC",
+    "QBIC",
+    "Penalised",
+    "TDLNM"
+  ],
+  "exposure_order": [
+    "dgp1",
+    "dgp2",
+    "dgp3",
+    "dgp4"
+  ],
+  "hardware": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 158 Stepping 13, GenuineIntel",
+    "logical_cpu_count": 8,
+    "torch_device": "cuda",
+    "torch_version": "2.13.0+cu126",
+    "cuda_version": "12.6",
+    "psutil_version": "7.2.2",
+    "gpu": "NVIDIA GeForce GTX 1070"
+  },
+  "results": {
+    "1": {
+      "DLNAM": {
+        "runtime": {
+          "seconds": [
+            235.04836400000204,
+            231.36223690000043,
+            235.30176409999694
+          ],
+          "n": 3,
+          "median_seconds": 235.04836400000204,
+          "min_seconds": 231.36223690000043,
+          "max_seconds": 235.30176409999694,
+          "mean_seconds": 233.90412166666647,
+          "sd_seconds": 2.2049799382139565
+        },
+        "peak_memory": {
+          "bytes": [
+            3132447744,
+            3116289024,
+            3117407232
+          ],
+          "n": 3,
+          "median_bytes": 3117407232,
+          "min_bytes": 3116289024,
+          "max_bytes": 3132447744,
+          "mean_bytes": 3122048000.0,
+          "sd_bytes": 9023779.902677592
+        },
+        "runtime_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        },
+        "memory_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        }
+      },
+      "QAIC": {
+        "runtime": {
+          "seconds": [
+            5.37,
+            5.34,
+            5.47
+          ],
+          "n": 3,
+          "median_seconds": 5.37,
+          "min_seconds": 5.34,
+          "max_seconds": 5.47,
+          "mean_seconds": 5.3933333333333335,
+          "sd_seconds": 0.06806859285554036
+        },
+        "peak_memory": {
+          "bytes": [
+            310165504,
+            311771136,
+            309657600
+          ],
+          "n": 3,
+          "median_bytes": 310165504,
+          "min_bytes": 309657600,
+          "max_bytes": 311771136,
+          "mean_bytes": 310531413.3333333,
+          "sd_bytes": 1103256.9220219438
+        },
+        "runtime_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        },
+        "memory_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        }
+      },
+      "QBIC": {
+        "runtime": {
+          "seconds": [
+            5.58,
+            5.39,
+            5.56
+          ],
+          "n": 3,
+          "median_seconds": 5.56,
+          "min_seconds": 5.39,
+          "max_seconds": 5.58,
+          "mean_seconds": 5.509999999999999,
+          "sd_seconds": 0.10440306508910562
+        },
+        "peak_memory": {
+          "bytes": [
+            306180096,
+            312012800,
+            309018624
+          ],
+          "n": 3,
+          "median_bytes": 309018624,
+          "min_bytes": 306180096,
+          "max_bytes": 312012800,
+          "mean_bytes": 309070506.6666667,
+          "sd_bytes": 2916698.1068031937
+        },
+        "runtime_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        },
+        "memory_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        }
+      },
+      "Penalised": {
+        "runtime": {
+          "seconds": [
+            3.18,
+            3.28,
+            3.19
+          ],
+          "n": 3,
+          "median_seconds": 3.19,
+          "min_seconds": 3.18,
+          "max_seconds": 3.28,
+          "mean_seconds": 3.216666666666667,
+          "sd_seconds": 0.05507570547286087
+        },
+        "peak_memory": {
+          "bytes": [
+            293736448,
+            288342016,
+            286785536
+          ],
+          "n": 3,
+          "median_bytes": 288342016,
+          "min_bytes": 286785536,
+          "max_bytes": 293736448,
+          "mean_bytes": 289621333.3333333,
+          "sd_bytes": 3647777.9589033835
+        },
+        "runtime_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        },
+        "memory_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        }
+      },
+      "TDLNM": {
+        "runtime": {
+          "seconds": [
+            42.33,
+            42.58,
+            40.78
+          ],
+          "n": 3,
+          "median_seconds": 42.33,
+          "min_seconds": 40.78,
+          "max_seconds": 42.58,
+          "mean_seconds": 41.89666666666667,
+          "sd_seconds": 0.9751068317540033
+        },
+        "peak_memory": {
+          "bytes": [
+            496955392,
+            497041408,
+            477638656
+          ],
+          "n": 3,
+          "median_bytes": 496955392,
+          "min_bytes": 477638656,
+          "max_bytes": 497041408,
+          "mean_bytes": 490545152.0,
+          "sd_bytes": 11177436.152203063
+        },
+        "runtime_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        },
+        "memory_relative": {
+          "values": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "n": 3,
+          "median": 1.0,
+          "min": 1.0,
+          "max": 1.0,
+          "mean": 1.0,
+          "sd": 0.0
+        }
+      }
+    },
+    "2": {
+      "DLNAM": {
+        "runtime": {
+          "seconds": [
+            466.4324508999998,
+            459.2590682000009,
+            464.0054464999994
+          ],
+          "n": 3,
+          "median_seconds": 464.0054464999994,
+          "min_seconds": 459.2590682000009,
+          "max_seconds": 466.4324508999998,
+          "mean_seconds": 463.2323218666667,
+          "sd_seconds": 3.6486499029312545
+        },
+        "peak_memory": {
+          "bytes": [
+            4899149312,
+            4836558336,
+            4890805760
+          ],
+          "n": 3,
+          "median_bytes": 4890805760,
+          "min_bytes": 4836558336,
+          "max_bytes": 4899149312,
+          "mean_bytes": 4875504469.333333,
+          "sd_bytes": 33985359.954067126
+        },
+        "runtime_relative": {
+          "values": [
+            1.9844105398665772,
+            1.985021731954045,
+            1.9719590640332365
+          ],
+          "n": 3,
+          "median": 1.9844105398665772,
+          "min": 1.9719590640332365,
+          "max": 1.985021731954045,
+          "mean": 1.9804637786179529,
+          "sd": 0.007371635949201648
+        },
+        "memory_relative": {
+          "values": [
+            1.5640003321313187,
+            1.5520249562063728,
+            1.568869703578079
+          ],
+          "n": 3,
+          "median": 1.5640003321313187,
+          "min": 1.5520249562063728,
+          "max": 1.568869703578079,
+          "mean": 1.5616316639719237,
+          "sd": 0.008668582360521813
+        }
+      },
+      "QAIC": {
+        "runtime": {
+          "seconds": [
+            20.02,
+            19.95,
+            20.14
+          ],
+          "n": 3,
+          "median_seconds": 20.02,
+          "min_seconds": 19.95,
+          "max_seconds": 20.14,
+          "mean_seconds": 20.036666666666665,
+          "sd_seconds": 0.09609023536933116
+        },
+        "peak_memory": {
+          "bytes": [
+            362385408,
+            361328640,
+            359452672
+          ],
+          "n": 3,
+          "median_bytes": 361328640,
+          "min_bytes": 359452672,
+          "max_bytes": 362385408,
+          "mean_bytes": 361055573.3333333,
+          "sd_bytes": 1485314.5002851528
+        },
+        "runtime_relative": {
+          "values": [
+            3.728119180633147,
+            3.735955056179775,
+            3.6819012797074957
+          ],
+          "n": 3,
+          "median": 3.728119180633147,
+          "min": 3.6819012797074957,
+          "max": 3.735955056179775,
+          "mean": 3.7153251721734724,
+          "sd": 0.029209890055911788
+        },
+        "memory_relative": {
+          "values": [
+            1.1683614177803603,
+            1.1589547532713227,
+            1.1608068783068783
+          ],
+          "n": 3,
+          "median": 1.1608068783068783,
+          "min": 1.1589547532713227,
+          "max": 1.1683614177803603,
+          "mean": 1.1627076831195204,
+          "sd": 0.004983084235513123
+        }
+      },
+      "QBIC": {
+        "runtime": {
+          "seconds": [
+            15.51,
+            15.7,
+            17.8
+          ],
+          "n": 3,
+          "median_seconds": 15.7,
+          "min_seconds": 15.51,
+          "max_seconds": 17.8,
+          "mean_seconds": 16.33666666666667,
+          "sd_seconds": 1.2708396174708023
+        },
+        "peak_memory": {
+          "bytes": [
+            355508224,
+            364711936,
+            356487168
+          ],
+          "n": 3,
+          "median_bytes": 356487168,
+          "min_bytes": 355508224,
+          "max_bytes": 364711936,
+          "mean_bytes": 358902442.6666667,
+          "sd_bytes": 5054922.59399858
+        },
+        "runtime_relative": {
+          "values": [
+            2.779569892473118,
+            2.9128014842300556,
+            3.201438848920864
+          ],
+          "n": 3,
+          "median": 2.9128014842300556,
+          "min": 2.779569892473118,
+          "max": 3.201438848920864,
+          "mean": 2.9646034085413455,
+          "sd": 0.2156523443539207
+        },
+        "memory_relative": {
+          "values": [
+            1.1611082125991625,
+            1.1689005579258287,
+            1.1536106250994116
+          ],
+          "n": 3,
+          "median": 1.1611082125991625,
+          "min": 1.1536106250994116,
+          "max": 1.1689005579258287,
+          "mean": 1.1612064652081342,
+          "sd": 0.007645439924586692
+        }
+      },
+      "Penalised": {
+        "runtime": {
+          "seconds": [
+            13.1,
+            12.8,
+            12.79
+          ],
+          "n": 3,
+          "median_seconds": 12.8,
+          "min_seconds": 12.79,
+          "max_seconds": 13.1,
+          "mean_seconds": 12.896666666666667,
+          "sd_seconds": 0.1761628034896507
+        },
+        "peak_memory": {
+          "bytes": [
+            366575616,
+            373055488,
+            375341056
+          ],
+          "n": 3,
+          "median_bytes": 373055488,
+          "min_bytes": 366575616,
+          "max_bytes": 375341056,
+          "mean_bytes": 371657386.6666667,
+          "sd_bytes": 4546894.555859123
+        },
+        "runtime_relative": {
+          "values": [
+            4.119496855345911,
+            3.9024390243902443,
+            4.009404388714733
+          ],
+          "n": 3,
+          "median": 4.009404388714733,
+          "min": 3.9024390243902443,
+          "max": 4.119496855345911,
+          "mean": 4.010446756150296,
+          "sd": 0.10853266969994689
+        },
+        "memory_relative": {
+          "values": [
+            1.2479745652810508,
+            1.2937951019944316,
+            1.308786563071298
+          ],
+          "n": 3,
+          "median": 1.2937951019944316,
+          "min": 1.2479745652810508,
+          "max": 1.308786563071298,
+          "mean": 1.2835187434489268,
+          "sd": 0.0316816575880601
+        }
+      },
+      "TDLNM": {
+        "runtime": {
+          "seconds": [
+            96.47,
+            98.1,
+            102.37
+          ],
+          "n": 3,
+          "median_seconds": 98.1,
+          "min_seconds": 96.47,
+          "max_seconds": 102.37,
+          "mean_seconds": 98.98,
+          "sd_seconds": 3.046850833237496
+        },
+        "peak_memory": {
+          "bytes": [
+            544313344,
+            529747968,
+            518529024
+          ],
+          "n": 3,
+          "median_bytes": 529747968,
+          "min_bytes": 518529024,
+          "max_bytes": 544313344,
+          "mean_bytes": 530863445.3333333,
+          "sd_bytes": 12928302.546215622
+        },
+        "runtime_relative": {
+          "values": [
+            2.2789983463264827,
+            2.303898543917332,
+            2.5102991662579694
+          ],
+          "n": 3,
+          "median": 2.303898543917332,
+          "min": 2.2789983463264827,
+          "max": 2.5102991662579694,
+          "mean": 2.3643986855005945,
+          "sd": 0.12696541920515464
+        },
+        "memory_relative": {
+          "values": [
+            1.0952961830425214,
+            1.065802485413851,
+            1.0856094193515191
+          ],
+          "n": 3,
+          "median": 1.0856094193515191,
+          "min": 1.065802485413851,
+          "max": 1.0952961830425214,
+          "mean": 1.0822360292692972,
+          "sd": 0.015033441736275301
+        }
+      }
+    },
+    "3": {
+      "DLNAM": {
+        "runtime": {
+          "seconds": [
+            698.5865388999955,
+            701.3544208999956,
+            694.0307767999984
+          ],
+          "n": 3,
+          "median_seconds": 698.5865388999955,
+          "min_seconds": 694.0307767999984,
+          "max_seconds": 701.3544208999956,
+          "mean_seconds": 697.9905788666632,
+          "sd_seconds": 3.698015278071872
+        },
+        "peak_memory": {
+          "bytes": [
+            6712911360,
+            6712468992,
+            6636770816
+          ],
+          "n": 3,
+          "median_bytes": 6712468992,
+          "min_bytes": 6636770816,
+          "max_bytes": 6712911360,
+          "mean_bytes": 6687383722.666667,
+          "sd_bytes": 43832620.9950807
+        },
+        "runtime_relative": {
+          "values": [
+            2.97209700595912,
+            3.031412689889991,
+            2.949534949109238
+          ],
+          "n": 3,
+          "median": 2.97209700595912,
+          "min": 2.949534949109238,
+          "max": 3.031412689889991,
+          "mean": 2.9843482149861167,
+          "sd": 0.042291372652201786
+        },
+        "memory_relative": {
+          "values": [
+            2.1430242125692742,
+            2.153994363264811,
+            2.1289393146567255
+          ],
+          "n": 3,
+          "median": 2.1430242125692742,
+          "min": 2.1289393146567255,
+          "max": 2.153994363264811,
+          "mean": 2.141985963496937,
+          "sd": 0.012559750636081118
+        }
+      },
+      "QAIC": {
+        "runtime": {
+          "seconds": [
+            61.7,
+            63.17,
+            64.15
+          ],
+          "n": 3,
+          "median_seconds": 63.17,
+          "min_seconds": 61.7,
+          "max_seconds": 64.15,
+          "mean_seconds": 63.00666666666667,
+          "sd_seconds": 1.233139624427557
+        },
+        "peak_memory": {
+          "bytes": [
+            429973504,
+            420954112,
+            438960128
+          ],
+          "n": 3,
+          "median_bytes": 429973504,
+          "min_bytes": 420954112,
+          "max_bytes": 438960128,
+          "mean_bytes": 429962581.3333333,
+          "sd_bytes": 9003012.96936472
+        },
+        "runtime_relative": {
+          "values": [
+            11.48975791433892,
+            11.829588014981274,
+            11.727605118829983
+          ],
+          "n": 3,
+          "median": 11.727605118829983,
+          "min": 11.48975791433892,
+          "max": 11.829588014981274,
+          "mean": 11.682317016050058,
+          "sd": 0.1743828647422155
+        },
+        "memory_relative": {
+          "values": [
+            1.3862711953937985,
+            1.3502023227705082,
+            1.4175661375661375
+          ],
+          "n": 3,
+          "median": 1.3862711953937985,
+          "min": 1.3502023227705082,
+          "max": 1.4175661375661375,
+          "mean": 1.3846798852434814,
+          "sd": 0.03371008880069639
+        }
+      },
+      "QBIC": {
+        "runtime": {
+          "seconds": [
+            42.08,
+            40.55,
+            40.69
+          ],
+          "n": 3,
+          "median_seconds": 40.69,
+          "min_seconds": 40.55,
+          "max_seconds": 42.08,
+          "mean_seconds": 41.10666666666666,
+          "sd_seconds": 0.8458329228242031
+        },
+        "peak_memory": {
+          "bytes": [
+            368222208,
+            365412352,
+            363061248
+          ],
+          "n": 3,
+          "median_bytes": 365412352,
+          "min_bytes": 363061248,
+          "max_bytes": 368222208,
+          "mean_bytes": 365565269.3333333,
+          "sd_bytes": 2583875.928431033
+        },
+        "runtime_relative": {
+          "values": [
+            7.541218637992831,
+            7.523191094619666,
+            7.318345323741007
+          ],
+          "n": 3,
+          "median": 7.523191094619666,
+          "min": 7.318345323741007,
+          "max": 7.541218637992831,
+          "mean": 7.460918352117834,
+          "sd": 0.12380044182240443
+        },
+        "memory_relative": {
+          "values": [
+            1.202632740699121,
+            1.1711453889071217,
+            1.174884682678543
+          ],
+          "n": 3,
+          "median": 1.174884682678543,
+          "min": 1.1711453889071217,
+          "max": 1.202632740699121,
+          "mean": 1.1828876040949285,
+          "sd": 0.017201697419612784
+        }
+      },
+      "Penalised": {
+        "runtime": {
+          "seconds": [
+            37.66,
+            39.09,
+            39.02
+          ],
+          "n": 3,
+          "median_seconds": 39.02,
+          "min_seconds": 37.66,
+          "max_seconds": 39.09,
+          "mean_seconds": 38.59,
+          "sd_seconds": 0.8061637550770974
+        },
+        "peak_memory": {
+          "bytes": [
+            459010048,
+            458498048,
+            458743808
+          ],
+          "n": 3,
+          "median_bytes": 458743808,
+          "min_bytes": 458498048,
+          "max_bytes": 459010048,
+          "mean_bytes": 458750634.6666667,
+          "sd_bytes": 256068.2575668709
+        },
+        "runtime_relative": {
+          "values": [
+            11.842767295597483,
+            11.91768292682927,
+            12.231974921630096
+          ],
+          "n": 3,
+          "median": 11.91768292682927,
+          "min": 11.842767295597483,
+          "max": 12.231974921630096,
+          "mean": 11.99747504801895,
+          "sd": 0.20650842838355768
+        },
+        "memory_relative": {
+          "values": [
+            1.5626594899111736,
+            1.5901187567475425,
+            1.5996058043875685
+          ],
+          "n": 3,
+          "median": 1.5901187567475425,
+          "min": 1.5626594899111736,
+          "max": 1.5996058043875685,
+          "mean": 1.5841280170154282,
+          "sd": 0.019187867527440765
+        }
+      },
+      "TDLNM": {
+        "runtime": {
+          "seconds": [
+            160.7,
+            192.73000000000002,
+            158.14
+          ],
+          "n": 3,
+          "median_seconds": 160.7,
+          "min_seconds": 158.14,
+          "max_seconds": 192.73000000000002,
+          "mean_seconds": 170.52333333333334,
+          "sd_seconds": 19.27408709468062
+        },
+        "peak_memory": {
+          "bytes": [
+            609005568,
+            720519168,
+            756076544
+          ],
+          "n": 3,
+          "median_bytes": 720519168,
+          "min_bytes": 609005568,
+          "max_bytes": 756076544,
+          "mean_bytes": 695200426.6666666,
+          "sd_bytes": 76734913.77740856
+        },
+        "runtime_relative": {
+          "values": [
+            3.7963619182612804,
+            4.526303428839832,
+            3.877881314369789
+          ],
+          "n": 3,
+          "median": 3.877881314369789,
+          "min": 3.7963619182612804,
+          "max": 4.526303428839832,
+          "mean": 4.066848887156967,
+          "sd": 0.39998151193552983
+        },
+        "memory_relative": {
+          "values": [
+            1.2254733076726532,
+            1.4496159804858753,
+            1.5829467202922538
+          ],
+          "n": 3,
+          "median": 1.4496159804858753,
+          "min": 1.2254733076726532,
+          "max": 1.5829467202922538,
+          "mean": 1.4193453361502606,
+          "sd": 0.1806489527061969
+        }
+      }
+    },
+    "4": {
+      "DLNAM": {
+        "runtime": {
+          "seconds": [
+            1071.7557726999948,
+            959.1881771999979,
+            1005.9709494999988
+          ],
+          "n": 3,
+          "median_seconds": 1005.9709494999988,
+          "min_seconds": 959.1881771999979,
+          "max_seconds": 1071.7557726999948,
+          "mean_seconds": 1012.3049664666638,
+          "sd_seconds": 56.550470531758045
+        },
+        "peak_memory": {
+          "bytes": [
+            8745899520,
+            8593110528,
+            8598541824
+          ],
+          "n": 3,
+          "median_bytes": 8598541824,
+          "min_bytes": 8593110528,
+          "max_bytes": 8745899520,
+          "mean_bytes": 8645850624.0,
+          "sd_bytes": 86687432.4061684
+        },
+        "runtime_relative": {
+          "values": [
+            4.559724451857855,
+            4.145828593516663,
+            4.2752376011617494
+          ],
+          "n": 3,
+          "median": 4.2752376011617494,
+          "min": 4.145828593516663,
+          "max": 4.559724451857855,
+          "mean": 4.326930215512089,
+          "sd": 0.21173459842873515
+        },
+        "memory_relative": {
+          "values": [
+            2.79203365379429,
+            2.757481883682943,
+            2.7582350280503873
+          ],
+          "n": 3,
+          "median": 2.7582350280503873,
+          "min": 2.757481883682943,
+          "max": 2.79203365379429,
+          "mean": 2.7692501885092065,
+          "sd": 0.019734652882860436
+        }
+      },
+      "QAIC": {
+        "runtime": {
+          "seconds": [
+            127.53,
+            126.82,
+            128.83
+          ],
+          "n": 3,
+          "median_seconds": 127.53,
+          "min_seconds": 126.82,
+          "max_seconds": 128.83,
+          "mean_seconds": 127.72666666666667,
+          "sd_seconds": 1.019329845208779
+        },
+        "peak_memory": {
+          "bytes": [
+            449183744,
+            447569920,
+            448557056
+          ],
+          "n": 3,
+          "median_bytes": 448557056,
+          "min_bytes": 447569920,
+          "max_bytes": 449183744,
+          "mean_bytes": 448436906.6666667,
+          "sd_bytes": 813593.1861006048
+        },
+        "runtime_relative": {
+          "values": [
+            23.748603351955307,
+            23.749063670411985,
+            23.55210237659964
+          ],
+          "n": 3,
+          "median": 23.748603351955307,
+          "min": 23.55210237659964,
+          "max": 23.749063670411985,
+          "mean": 23.68325646632231,
+          "sd": 0.11358300670217958
+        },
+        "memory_relative": {
+          "values": [
+            1.448206645185146,
+            1.435572021651164,
+            1.448558201058201
+          ],
+          "n": 3,
+          "median": 1.448206645185146,
+          "min": 1.435572021651164,
+          "max": 1.448558201058201,
+          "mean": 1.4441122892981706,
+          "sd": 0.00739817724137825
+        }
+      },
+      "QBIC": {
+        "runtime": {
+          "seconds": [
+            71.03,
+            68.91,
+            69.69
+          ],
+          "n": 3,
+          "median_seconds": 69.69,
+          "min_seconds": 68.91,
+          "max_seconds": 71.03,
+          "mean_seconds": 69.87666666666667,
+          "sd_seconds": 1.0722561882933288
+        },
+        "peak_memory": {
+          "bytes": [
+            398721024,
+            391327744,
+            385626112
+          ],
+          "n": 3,
+          "median_bytes": 391327744,
+          "min_bytes": 385626112,
+          "max_bytes": 398721024,
+          "mean_bytes": 391891626.6666667,
+          "sd_bytes": 6565641.843587063
+        },
+        "runtime_relative": {
+          "values": [
+            12.729390681003585,
+            12.784786641929498,
+            12.534172661870505
+          ],
+          "n": 3,
+          "median": 12.729390681003585,
+          "min": 12.534172661870505,
+          "max": 12.784786641929498,
+          "mean": 12.682783328267861,
+          "sd": 0.13164735374106995
+        },
+        "memory_relative": {
+          "values": [
+            1.302243448248184,
+            1.2542041352149655,
+            1.247905731403425
+          ],
+          "n": 3,
+          "median": 1.2542041352149655,
+          "min": 1.247905731403425,
+          "max": 1.302243448248184,
+          "mean": 1.2681177716221914,
+          "sd": 0.029721016579680834
+        }
+      },
+      "Penalised": {
+        "runtime": {
+          "seconds": [
+            107.86,
+            106.8,
+            105.55
+          ],
+          "n": 3,
+          "median_seconds": 106.8,
+          "min_seconds": 105.55,
+          "max_seconds": 107.86,
+          "mean_seconds": 106.73666666666666,
+          "sd_seconds": 1.1563015754262969
+        },
+        "peak_memory": {
+          "bytes": [
+            568291328,
+            582545408,
+            568852480
+          ],
+          "n": 3,
+          "median_bytes": 568852480,
+          "min_bytes": 568291328,
+          "max_bytes": 582545408,
+          "mean_bytes": 573229738.6666666,
+          "sd_bytes": 8072483.771292534
+        },
+        "runtime_relative": {
+          "values": [
+            33.91823899371069,
+            32.5609756097561,
+            33.087774294670844
+          ],
+          "n": 3,
+          "median": 33.087774294670844,
+          "min": 32.5609756097561,
+          "max": 33.91823899371069,
+          "mean": 33.188996299379205,
+          "sd": 0.684269971600282
+        },
+        "memory_relative": {
+          "values": [
+            1.9346980324348444,
+            2.0203278595374736,
+            1.983546617915905
+          ],
+          "n": 3,
+          "median": 1.983546617915905,
+          "min": 1.9346980324348444,
+          "max": 2.0203278595374736,
+          "mean": 1.979524169962741,
+          "sd": 0.04295639519394613
+        }
+      },
+      "TDLNM": {
+        "runtime": {
+          "seconds": [
+            260.67,
+            314.85,
+            262.56
+          ],
+          "n": 3,
+          "median_seconds": 262.56,
+          "min_seconds": 260.67,
+          "max_seconds": 314.85,
+          "mean_seconds": 279.35999999999996,
+          "sd_seconds": 30.74976585276708
+        },
+        "peak_memory": {
+          "bytes": [
+            778219520,
+            749621248,
+            667664384
+          ],
+          "n": 3,
+          "median_bytes": 749621248,
+          "min_bytes": 667664384,
+          "max_bytes": 778219520,
+          "mean_bytes": 731835050.6666666,
+          "sd_bytes": 57383544.11919701
+        },
+        "runtime_relative": {
+          "values": [
+            6.158043940467754,
+            7.394316580554252,
+            6.43845022069642
+          ],
+          "n": 3,
+          "median": 6.43845022069642,
+          "min": 6.158043940467754,
+          "max": 7.394316580554252,
+          "mean": 6.663603580572809,
+          "sd": 0.6481612737230835
+        },
+        "memory_relative": {
+          "values": [
+            1.5659745975751482,
+            1.5081665952467285,
+            1.3978441141916287
+          ],
+          "n": 3,
+          "median": 1.5081665952467285,
+          "min": 1.3978441141916287,
+          "max": 1.5659745975751482,
+          "mean": 1.4906617690045019,
+          "sd": 0.08542118628901085
+        }
+      }
+    }
+  },
+  "details": {
+    "1": {
+      "DLNAM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 235.04836400000204,
+          "training_seconds": 234.78133200000593,
+          "peak_gpu_allocated_bytes": 1867234304,
+          "peak_gpu_reserved_bytes": 2122317824,
+          "subprocess_wall_seconds": 239.84426459999668,
+          "peak_host_rss_bytes": 1265213440,
+          "peak_total_allocated_bytes": 3132447744,
+          "peak_total_reserved_bytes": 3387531264
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 231.36223690000043,
+          "training_seconds": 231.07949860000372,
+          "peak_gpu_allocated_bytes": 1867234304,
+          "peak_gpu_reserved_bytes": 2122317824,
+          "subprocess_wall_seconds": 235.95387910000136,
+          "peak_host_rss_bytes": 1249054720,
+          "peak_total_allocated_bytes": 3116289024,
+          "peak_total_reserved_bytes": 3371372544
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 235.30176409999694,
+          "training_seconds": 235.03632280000602,
+          "peak_gpu_allocated_bytes": 1867234304,
+          "peak_gpu_reserved_bytes": 2122317824,
+          "subprocess_wall_seconds": 239.8503250000067,
+          "peak_host_rss_bytes": 1250172928,
+          "peak_total_allocated_bytes": 3117407232,
+          "peak_total_reserved_bytes": 3372490752
+        }
+      ],
+      "QAIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 5.37,
+          "subprocess_wall_seconds": 7.058179100000416,
+          "peak_host_rss_bytes": 310165504,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 310165504,
+          "peak_total_reserved_bytes": 310165504,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 6.5,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 5.37,
+                "n_exposures": 1,
+                "grid_fits": 81,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 5.34,
+          "subprocess_wall_seconds": 6.343158099996799,
+          "peak_host_rss_bytes": 311771136,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 311771136,
+          "peak_total_reserved_bytes": 311771136,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 6.08,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 5.34,
+                "n_exposures": 1,
+                "grid_fits": 81,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 5.47,
+          "subprocess_wall_seconds": 6.505589799999143,
+          "peak_host_rss_bytes": 309657600,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 309657600,
+          "peak_total_reserved_bytes": 309657600,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 6.27,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 5.47,
+                "n_exposures": 1,
+                "grid_fits": 81,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "QBIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 5.58,
+          "subprocess_wall_seconds": 6.5743373000004794,
+          "peak_host_rss_bytes": 306180096,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 306180096,
+          "peak_total_reserved_bytes": 306180096,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 6.33,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 5.58,
+                "n_exposures": 1,
+                "grid_fits": 81,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 5.39,
+          "subprocess_wall_seconds": 6.440824599994812,
+          "peak_host_rss_bytes": 312012800,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 312012800,
+          "peak_total_reserved_bytes": 312012800,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 6.17,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 5.39,
+                "n_exposures": 1,
+                "grid_fits": 81,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 5.56,
+          "subprocess_wall_seconds": 6.505387200006226,
+          "peak_host_rss_bytes": 309018624,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 309018624,
+          "peak_total_reserved_bytes": 309018624,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 6.3,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 5.56,
+                "n_exposures": 1,
+                "grid_fits": 81,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "Penalised": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 3.18,
+          "subprocess_wall_seconds": 4.147576099996513,
+          "peak_host_rss_bytes": 293736448,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 293736448,
+          "peak_total_reserved_bytes": 293736448,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 3.93,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 3.18,
+                "n_exposures": 1,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 27.0071,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 3.28,
+          "subprocess_wall_seconds": 4.219413999999233,
+          "peak_host_rss_bytes": 288342016,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 288342016,
+          "peak_total_reserved_bytes": 288342016,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 4.02,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 3.28,
+                "n_exposures": 1,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 27.0071,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 3.19,
+          "subprocess_wall_seconds": 4.156547900005535,
+          "peak_host_rss_bytes": 286785536,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 286785536,
+          "peak_total_reserved_bytes": 286785536,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 3.89,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 3.19,
+                "n_exposures": 1,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 27.0071,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "TDLNM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 42.33,
+          "subprocess_wall_seconds": 46.2074305999995,
+          "peak_host_rss_bytes": 496955392,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 496955392,
+          "peak_total_reserved_bytes": 496955392,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 45.96,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 42.33,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 0
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 42.33
+            }
+          ]
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 42.58,
+          "subprocess_wall_seconds": 44.34969679999631,
+          "peak_host_rss_bytes": 497041408,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 497041408,
+          "peak_total_reserved_bytes": 497041408,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 44.06,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 42.58,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 0
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 42.58
+            }
+          ]
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 40.78,
+          "subprocess_wall_seconds": 42.37583509999968,
+          "peak_host_rss_bytes": 477638656,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 477638656,
+          "peak_total_reserved_bytes": 477638656,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 42.14,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 40.78,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 0
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 40.78
+            }
+          ]
+        }
+      ]
+    },
+    "2": {
+      "DLNAM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 466.4324508999998,
+          "training_seconds": 465.2811504000056,
+          "peak_gpu_allocated_bytes": 3602056704,
+          "peak_gpu_reserved_bytes": 3867148288,
+          "subprocess_wall_seconds": 471.42018989999633,
+          "peak_host_rss_bytes": 1297092608,
+          "peak_total_allocated_bytes": 4899149312,
+          "peak_total_reserved_bytes": 5164240896
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 459.2590682000009,
+          "training_seconds": 457.521219000002,
+          "peak_gpu_allocated_bytes": 3602056704,
+          "peak_gpu_reserved_bytes": 3867148288,
+          "subprocess_wall_seconds": 463.74293999999645,
+          "peak_host_rss_bytes": 1234501632,
+          "peak_total_allocated_bytes": 4836558336,
+          "peak_total_reserved_bytes": 5101649920
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 464.0054464999994,
+          "training_seconds": 462.8697100999998,
+          "peak_gpu_allocated_bytes": 3602056704,
+          "peak_gpu_reserved_bytes": 3867148288,
+          "subprocess_wall_seconds": 468.53068460000213,
+          "peak_host_rss_bytes": 1288749056,
+          "peak_total_allocated_bytes": 4890805760,
+          "peak_total_reserved_bytes": 5155897344
+        }
+      ],
+      "QAIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 20.02,
+          "subprocess_wall_seconds": 21.09678939999867,
+          "peak_host_rss_bytes": 362385408,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 362385408,
+          "peak_total_reserved_bytes": 362385408,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 20.8,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 20.02,
+                "n_exposures": 2,
+                "grid_fits": 162,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 19.95,
+          "subprocess_wall_seconds": 20.99744500000088,
+          "peak_host_rss_bytes": 361328640,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 361328640,
+          "peak_total_reserved_bytes": 361328640,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 20.72,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 19.95,
+                "n_exposures": 2,
+                "grid_fits": 162,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 20.14,
+          "subprocess_wall_seconds": 21.08698259999801,
+          "peak_host_rss_bytes": 359452672,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 359452672,
+          "peak_total_reserved_bytes": 359452672,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 20.87,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 20.14,
+                "n_exposures": 2,
+                "grid_fits": 162,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "QBIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 15.51,
+          "subprocess_wall_seconds": 16.47425790000125,
+          "peak_host_rss_bytes": 355508224,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 355508224,
+          "peak_total_reserved_bytes": 355508224,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 16.25,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 15.51,
+                "n_exposures": 2,
+                "grid_fits": 162,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 15.7,
+          "subprocess_wall_seconds": 16.658239999997022,
+          "peak_host_rss_bytes": 364711936,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 364711936,
+          "peak_total_reserved_bytes": 364711936,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 16.44,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 15.7,
+                "n_exposures": 2,
+                "grid_fits": 162,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 17.8,
+          "subprocess_wall_seconds": 18.762322599999607,
+          "peak_host_rss_bytes": 356487168,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 356487168,
+          "peak_total_reserved_bytes": 356487168,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 18.55,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 17.8,
+                "n_exposures": 2,
+                "grid_fits": 162,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "Penalised": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 13.1,
+          "subprocess_wall_seconds": 14.093069299997296,
+          "peak_host_rss_bytes": 366575616,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 366575616,
+          "peak_total_reserved_bytes": 366575616,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 13.88,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 13.1,
+                "n_exposures": 2,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 27.9327,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 49.1745,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 12.8,
+          "subprocess_wall_seconds": 13.757400399998005,
+          "peak_host_rss_bytes": 373055488,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 373055488,
+          "peak_total_reserved_bytes": 373055488,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 13.53,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 12.8,
+                "n_exposures": 2,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 27.9327,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 49.1745,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 12.79,
+          "subprocess_wall_seconds": 13.744528499999433,
+          "peak_host_rss_bytes": 375341056,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 375341056,
+          "peak_total_reserved_bytes": 375341056,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 13.52,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 12.79,
+                "n_exposures": 2,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 27.9327,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 49.1745,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "TDLNM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 96.47,
+          "subprocess_wall_seconds": 98.07884289999492,
+          "peak_host_rss_bytes": 544313344,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 544313344,
+          "peak_total_reserved_bytes": 544313344,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 97.84,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 48.73,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 1
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 47.74,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 1
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 48.73
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 47.74
+            }
+          ]
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 98.1,
+          "subprocess_wall_seconds": 99.68914460000087,
+          "peak_host_rss_bytes": 529747968,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 529747968,
+          "peak_total_reserved_bytes": 529747968,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 99.47,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 47.3,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 1
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 50.8,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 1
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 47.3
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 50.8
+            }
+          ]
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 102.37,
+          "subprocess_wall_seconds": 103.99781929999881,
+          "peak_host_rss_bytes": 518529024,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 518529024,
+          "peak_total_reserved_bytes": 518529024,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 103.73,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 50.27,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 1
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 52.1,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 1
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 50.27
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 52.1
+            }
+          ]
+        }
+      ]
+    },
+    "3": {
+      "DLNAM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 698.5865388999955,
+          "training_seconds": 695.1380739000015,
+          "peak_gpu_allocated_bytes": 5336819200,
+          "peak_gpu_reserved_bytes": 5611978752,
+          "subprocess_wall_seconds": 703.6672218999956,
+          "peak_host_rss_bytes": 1376092160,
+          "peak_total_allocated_bytes": 6712911360,
+          "peak_total_reserved_bytes": 6988070912
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 701.3544208999956,
+          "training_seconds": 697.9004499000002,
+          "peak_gpu_allocated_bytes": 5336819200,
+          "peak_gpu_reserved_bytes": 5611978752,
+          "subprocess_wall_seconds": 705.8339678999982,
+          "peak_host_rss_bytes": 1375649792,
+          "peak_total_allocated_bytes": 6712468992,
+          "peak_total_reserved_bytes": 6987628544
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 694.0307767999984,
+          "training_seconds": 690.6287771999996,
+          "peak_gpu_allocated_bytes": 5336819200,
+          "peak_gpu_reserved_bytes": 5611978752,
+          "subprocess_wall_seconds": 698.6480379999994,
+          "peak_host_rss_bytes": 1299951616,
+          "peak_total_allocated_bytes": 6636770816,
+          "peak_total_reserved_bytes": 6911930368
+        }
+      ],
+      "QAIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 61.7,
+          "subprocess_wall_seconds": 62.73928980000346,
+          "peak_host_rss_bytes": 429973504,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 429973504,
+          "peak_total_reserved_bytes": 429973504,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 62.48,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 61.7,
+                "n_exposures": 3,
+                "grid_fits": 243,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 10,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 63.17,
+          "subprocess_wall_seconds": 64.17402990000119,
+          "peak_host_rss_bytes": 420954112,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 420954112,
+          "peak_total_reserved_bytes": 420954112,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 63.96,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 63.17,
+                "n_exposures": 3,
+                "grid_fits": 243,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 10,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 64.15,
+          "subprocess_wall_seconds": 65.17221479999716,
+          "peak_host_rss_bytes": 438960128,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 438960128,
+          "peak_total_reserved_bytes": 438960128,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 64.93,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 64.15,
+                "n_exposures": 3,
+                "grid_fits": 243,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 10,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "QBIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 42.08,
+          "subprocess_wall_seconds": 43.10027409999748,
+          "peak_host_rss_bytes": 368222208,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 368222208,
+          "peak_total_reserved_bytes": 368222208,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 42.84,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 42.08,
+                "n_exposures": 3,
+                "grid_fits": 243,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 6,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 40.55,
+          "subprocess_wall_seconds": 41.655286799999885,
+          "peak_host_rss_bytes": 365412352,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 365412352,
+          "peak_total_reserved_bytes": 365412352,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 41.41,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 40.55,
+                "n_exposures": 3,
+                "grid_fits": 243,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 6,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 40.69,
+          "subprocess_wall_seconds": 41.676502000002074,
+          "peak_host_rss_bytes": 363061248,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 363061248,
+          "peak_total_reserved_bytes": 363061248,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 41.45,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 40.69,
+                "n_exposures": 3,
+                "grid_fits": 243,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 6,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 5
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "Penalised": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 37.66,
+          "subprocess_wall_seconds": 38.59769950000191,
+          "peak_host_rss_bytes": 459010048,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 459010048,
+          "peak_total_reserved_bytes": 459010048,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 38.39,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 37.66,
+                "n_exposures": 3,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 29.4543,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 48.8471,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "edf": 52.3014,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 39.09,
+          "subprocess_wall_seconds": 40.0805923999942,
+          "peak_host_rss_bytes": 458498048,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 458498048,
+          "peak_total_reserved_bytes": 458498048,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 39.85,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 39.09,
+                "n_exposures": 3,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 29.4543,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 48.8471,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "edf": 52.3014,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 39.02,
+          "subprocess_wall_seconds": 40.04408929999772,
+          "peak_host_rss_bytes": 458743808,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 458743808,
+          "peak_total_reserved_bytes": 458743808,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 39.8,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 39.02,
+                "n_exposures": 3,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 29.4543,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 48.8471,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "edf": 52.3014,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "TDLNM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 160.7,
+          "subprocess_wall_seconds": 162.35647540000355,
+          "peak_host_rss_bytes": 609005568,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 609005568,
+          "peak_total_reserved_bytes": 609005568,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 162.09,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 49.39,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 2
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 55.59,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 2
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 55.72,
+                "exposure": "dgp3",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 2
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 49.39
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 55.59
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp3",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 55.72
+            }
+          ]
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 192.73000000000002,
+          "subprocess_wall_seconds": 194.36111820000224,
+          "peak_host_rss_bytes": 720519168,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 720519168,
+          "peak_total_reserved_bytes": 720519168,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 194.11,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 48.81,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 2
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 50.24,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 2
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 93.68,
+                "exposure": "dgp3",
+                "attempts": 2,
+                "status": "saved",
+                "adjusted_exposures": 2
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 48.81
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 50.24
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp3",
+              "status": "saved",
+              "attempts": 2,
+              "message": "",
+              "fit_seconds": 93.68
+            }
+          ]
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 158.14,
+          "subprocess_wall_seconds": 159.89350019999983,
+          "peak_host_rss_bytes": 756076544,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 756076544,
+          "peak_total_reserved_bytes": 756076544,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 159.59,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 49.68,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 2
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 52.23,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 2
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 56.23,
+                "exposure": "dgp3",
+                "attempts": 2,
+                "status": "saved",
+                "adjusted_exposures": 2
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 49.68
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 52.23
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp3",
+              "status": "saved",
+              "attempts": 2,
+              "message": "",
+              "fit_seconds": 56.23
+            }
+          ]
+        }
+      ]
+    },
+    "4": {
+      "DLNAM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 1071.7557726999948,
+          "training_seconds": 1055.8985818,
+          "peak_gpu_allocated_bytes": 7071581696,
+          "peak_gpu_reserved_bytes": 7358906368,
+          "subprocess_wall_seconds": 1076.7445724000063,
+          "peak_host_rss_bytes": 1674317824,
+          "peak_total_allocated_bytes": 8745899520,
+          "peak_total_reserved_bytes": 9033224192
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 959.1881771999979,
+          "training_seconds": 950.6053302,
+          "peak_gpu_allocated_bytes": 7071581696,
+          "peak_gpu_reserved_bytes": 7358906368,
+          "subprocess_wall_seconds": 964.3247371000034,
+          "peak_host_rss_bytes": 1521528832,
+          "peak_total_allocated_bytes": 8593110528,
+          "peak_total_reserved_bytes": 8880435200
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 1005.9709494999988,
+          "training_seconds": 997.9590526000029,
+          "peak_gpu_allocated_bytes": 7071581696,
+          "peak_gpu_reserved_bytes": 7358906368,
+          "subprocess_wall_seconds": 1010.518965700001,
+          "peak_host_rss_bytes": 1526960128,
+          "peak_total_allocated_bytes": 8598541824,
+          "peak_total_reserved_bytes": 8885866496
+        }
+      ],
+      "QAIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 127.53,
+          "subprocess_wall_seconds": 128.54595730000437,
+          "peak_host_rss_bytes": 449183744,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 449183744,
+          "peak_total_reserved_bytes": 449183744,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 128.27,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 127.53,
+                "n_exposures": 4,
+                "grid_fits": 324,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "value_df": 8,
+                    "lag_df": 7
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 126.82,
+          "subprocess_wall_seconds": 127.80090120000386,
+          "peak_host_rss_bytes": 447569920,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 447569920,
+          "peak_total_reserved_bytes": 447569920,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 127.55,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 126.82,
+                "n_exposures": 4,
+                "grid_fits": 324,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "value_df": 8,
+                    "lag_df": 7
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 128.83,
+          "subprocess_wall_seconds": 129.7933462000001,
+          "peak_host_rss_bytes": 448557056,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 448557056,
+          "peak_total_reserved_bytes": 448557056,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 129.58,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qaic",
+                "fit_seconds": 128.83,
+                "n_exposures": 4,
+                "grid_fits": 324,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 9,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 10,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 6
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "value_df": 8,
+                    "lag_df": 7
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "QBIC": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 71.03,
+          "subprocess_wall_seconds": 71.99621849999676,
+          "peak_host_rss_bytes": 398721024,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 398721024,
+          "peak_total_reserved_bytes": 398721024,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 71.78,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 71.03,
+                "n_exposures": 4,
+                "grid_fits": 324,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 7,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "value_df": 8,
+                    "lag_df": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 68.91,
+          "subprocess_wall_seconds": 69.83972119999817,
+          "peak_host_rss_bytes": 391327744,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 391327744,
+          "peak_total_reserved_bytes": 391327744,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 69.62,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 68.91,
+                "n_exposures": 4,
+                "grid_fits": 324,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 7,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "value_df": 8,
+                    "lag_df": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 69.69,
+          "subprocess_wall_seconds": 70.67328290000296,
+          "peak_host_rss_bytes": 385626112,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 385626112,
+          "peak_total_reserved_bytes": 385626112,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 70.43,
+            "records": [
+              {
+                "rep": 0,
+                "method": "qbic",
+                "fit_seconds": 69.69,
+                "n_exposures": 4,
+                "grid_fits": 324,
+                "coordinatewise_selection": true,
+                "selected": [
+                  {
+                    "exposure": "dgp1",
+                    "value_df": 7,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "value_df": 7,
+                    "lag_df": 5
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "value_df": 8,
+                    "lag_df": 3
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "value_df": 8,
+                    "lag_df": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "Penalised": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 107.86,
+          "subprocess_wall_seconds": 108.78500859999622,
+          "peak_host_rss_bytes": 568291328,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 568291328,
+          "peak_total_reserved_bytes": 568291328,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 108.56,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 107.86,
+                "n_exposures": 4,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 29.69,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 52.9482,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "edf": 51.1605,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "edf": 60.2556,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 106.8,
+          "subprocess_wall_seconds": 107.7296869999991,
+          "peak_host_rss_bytes": 582545408,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 582545408,
+          "peak_total_reserved_bytes": 582545408,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 107.52,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 106.8,
+                "n_exposures": 4,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 29.69,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 52.9482,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "edf": 51.1605,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "edf": 60.2556,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 105.55,
+          "subprocess_wall_seconds": 106.52948340000148,
+          "peak_host_rss_bytes": 568852480,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 568852480,
+          "peak_total_reserved_bytes": 568852480,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 106.28,
+            "records": [
+              {
+                "rep": 0,
+                "method": "pen",
+                "fit_seconds": 105.55,
+                "n_exposures": 4,
+                "value_df": 10,
+                "lag_df": 10,
+                "edf_by_exposure": [
+                  {
+                    "exposure": "dgp1",
+                    "edf": 29.69,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp2",
+                    "edf": 52.9482,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp3",
+                    "edf": 51.1605,
+                    "basis_dim": 100
+                  },
+                  {
+                    "exposure": "dgp4",
+                    "edf": 60.2556,
+                    "basis_dim": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "tdlnm_fit_status": null
+        }
+      ],
+      "TDLNM": [
+        {
+          "repeat": 0,
+          "seed": 0,
+          "seconds": 260.67,
+          "subprocess_wall_seconds": 262.3758744000006,
+          "peak_host_rss_bytes": 778219520,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 778219520,
+          "peak_total_reserved_bytes": 778219520,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 262.11,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 55.13,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 56.7,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 91.09,
+                "exposure": "dgp3",
+                "attempts": 2,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 57.75,
+                "exposure": "dgp4",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 55.13
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 56.7
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp3",
+              "status": "saved",
+              "attempts": 2,
+              "message": "",
+              "fit_seconds": 91.09
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp4",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 57.75
+            }
+          ]
+        },
+        {
+          "repeat": 1,
+          "seed": 1,
+          "seconds": 314.85,
+          "subprocess_wall_seconds": 316.433683700001,
+          "peak_host_rss_bytes": 749621248,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 749621248,
+          "peak_total_reserved_bytes": 749621248,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 316.2,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 54.62,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 59.74,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 140.24,
+                "exposure": "dgp3",
+                "attempts": 3,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 60.25,
+                "exposure": "dgp4",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 54.62
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 59.74
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp3",
+              "status": "saved",
+              "attempts": 3,
+              "message": "",
+              "fit_seconds": 140.24
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp4",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 60.25
+            }
+          ]
+        },
+        {
+          "repeat": 2,
+          "seed": 2,
+          "seconds": 262.56,
+          "subprocess_wall_seconds": 264.22703100000217,
+          "peak_host_rss_bytes": 667664384,
+          "peak_gpu_allocated_bytes": 0,
+          "peak_gpu_reserved_bytes": 0,
+          "peak_total_allocated_bytes": 667664384,
+          "peak_total_reserved_bytes": 667664384,
+          "timing": {
+            "kind": "joint_dlnm_mc",
+            "elapsed_seconds_total": 263.96,
+            "records": [
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 57.11,
+                "exposure": "dgp1",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 64.5,
+                "exposure": "dgp2",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 68.81,
+                "exposure": "dgp3",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              },
+              {
+                "rep": 0,
+                "method": "tdlnm",
+                "fit_seconds": 72.14,
+                "exposure": "dgp4",
+                "attempts": 1,
+                "status": "saved",
+                "adjusted_exposures": 3
+              }
+            ]
+          },
+          "tdlnm_fit_status": [
+            {
+              "rep": 0,
+              "exposure": "dgp1",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 57.11
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp2",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 64.5
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp3",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 68.81
+            },
+            {
+              "rep": 0,
+              "exposure": "dgp4",
+              "status": "saved",
+              "attempts": 1,
+              "message": "",
+              "fit_seconds": 72.14
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "r_environment": {
+    "1": {
+      "QAIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "QBIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "Penalised": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "TDLNM": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        }
+      ]
+    },
+    "2": {
+      "QAIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "QBIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "Penalised": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "TDLNM": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        }
+      ]
+    },
+    "3": {
+      "QAIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "QBIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "Penalised": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "TDLNM": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        }
+      ]
+    },
+    "4": {
+      "QAIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qaic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "QBIC": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "qbic",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "Penalised": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "pen",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0"
+          }
+        }
+      ],
+      "TDLNM": [
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        },
+        {
+          "r_version": "R version 4.5.0 (2025-04-11 ucrt)",
+          "platform": "x86_64-w64-mingw32",
+          "methods": "tdlnm",
+          "tdlnm": {
+            "family": "gaussian",
+            "response": "log1p",
+            "n_burn": 5000,
+            "n_iter": 15000,
+            "n_thin": 10,
+            "n_attempts": 10,
+            "exposure_splits": 30,
+            "n_trees": 20,
+            "adjustment_value_df": 4,
+            "adjustment_lag_df": 4
+          },
+          "packages": {
+            "dlnm": "2.4.10",
+            "splines": "4.5.0",
+            "mgcv": "1.9.4",
+            "jsonlite": "2.0.0",
+            "dlmtree": "1.1.1"
+          }
+        }
+      ]
+    }
+  },
+  "created_at": "2026-07-26T12:57:06.954803+00:00",
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "torch": "2.13.0+cu126",
+      "matplotlib": "3.11.1"
+    }
+  }
+}
