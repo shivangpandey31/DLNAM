@@ -136,6 +136,8 @@ their versions.
 ## Minimal Use
 
 ```python
+import numpy as np
+import pandas as pd
 import torch
 
 from dlnam import (
@@ -164,6 +166,10 @@ model_config = ModelConfig(
     },
     link="log",
 )
+
+rng = np.random.default_rng(0)
+temp = rng.normal(20.0, 5.0, size=500)
+df = pd.DataFrame({"temp": temp, "death": rng.poisson(np.exp(1.5 + 0.02 * temp))})
 
 train_config = TrainConfig(epochs=100, n_ensemble=3, loss="poisson")
 trainer = Trainer(model_config, train_config)
@@ -286,6 +292,13 @@ refitting:
 
 ```bash
 python experiments/run_real_chicago.py --figures-only
+```
+
+The malaria bundle is stored compressed to keep the repository small. Decompress
+it once before redrawing that figure:
+
+```bash
+python -c "import gzip,shutil;p='experiments/results/malaria_model_comparison.json';shutil.copyfileobj(gzip.open(p+'.gz','rb'),open(p,'wb'))"
 ```
 
 Absolute timings in the scaling benchmark are hardware-dependent, so
