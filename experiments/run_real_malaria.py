@@ -23,9 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Deterministic GPU reductions. Several backward kernels (notably the
-# categorical embedding) accumulate with atomics, so an identical seed does not
-# otherwise give an identical fit: reruns of this analysis moved minimum
-# mortality by ~0.6 C. Must be set before torch initialises cuBLAS.
+# categorical embedding) accumulate with atomics, so an identical seed does
+# not otherwise reproduce a fit. Must be set before torch initialises cuBLAS.
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import numpy as np
@@ -447,7 +446,7 @@ def save_outputs(dlnam: dict, ref_curves: dict[str, pd.DataFrame],
         "models": ["DLNAM", "DLNM"],
         "exposures": EXPOSURES,
         "settings": {
-            "data_path": str(DATA_PATH),
+            "data_file": DATA_PATH.name,
             "lag_count": LAG_COUNT,
             "epochs": EPOCHS,
             "batch_fraction": BATCH_FRACTION,
@@ -457,6 +456,7 @@ def save_outputs(dlnam: dict, ref_curves: dict[str, pd.DataFrame],
             "device": DEVICE,
             "ci_level": CI_LEVEL,
             "dlnam_interval": DLNAM_INTERVAL,
+            "se_source": SE_SOURCE,
             "reference_dlnm_value_df": REFERENCE_DF_VALUE,
             "reference_dlnm_lag_df": REFERENCE_DF_LAG,
             "reference": refs,

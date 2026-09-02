@@ -564,7 +564,7 @@ def main():
             "tdlnm_adjust_lag_df": TDLNM_SETTINGS["adjust_lag_df"],
             "include_null": INCLUDE_NULL,
             "se_source": "laplace+ensemble",
-            "baseline_results": baseline_path if baseline_results is not None else None,
+            "baseline_results": baseline_path.name if baseline_results is not None else None,
         },
         exposures=EXPOSURES,
         models=["DLNAM", *R_MODELS.keys()],
