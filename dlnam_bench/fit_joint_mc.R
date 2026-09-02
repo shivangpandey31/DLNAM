@@ -2,12 +2,12 @@
 script_start <- proc.time()[["elapsed"]]
 # fit_joint_mc.R -- joint DLNM fits for the joint MC manifest.
 #
-# This is the MC version of fit_joint.R. Each replicate contains all
-# exposures, and each method writes one cumulative RR curve per exposure. QAIC
-# and QBIC use marginal/coordinate-wise df selection because full joint df
-# search scales as grid^K. Penalised uses one joint REML gam with cbPen on each
-# cross-basis. TDLNM is fitted target-exposure by target-exposure, adjusted for
-# the other concurrent exposures with fixed natural-spline cross-basis terms.
+# Each replicate contains all exposures, and each method writes one cumulative
+# RR curve per exposure. QAIC and QBIC use marginal/coordinate-wise df
+# selection because full joint df search scales as grid^K. Penalised uses one
+# joint REML gam with cbPen on each cross-basis. TDLNM is fitted
+# target-exposure by target-exposure, adjusted for the other concurrent
+# exposures with fixed natural-spline cross-basis terms.
 
 suppressMessages({
   library(dlnm)
