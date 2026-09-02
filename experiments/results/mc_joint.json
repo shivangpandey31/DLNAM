@@ -50,7 +50,7 @@
     "tdlnm_adjust_lag_df": 4,
     "include_null": true,
     "se_source": "laplace+ensemble",
-    "baseline_results": "/nobackup/proj/disk/dlnam/shared/DLNAM/Python codes/experiments/results/mc_model_comparison.json",
+    "baseline_results": "mc_model_comparison.json",
     "learning_rate": 0.0007,
     "minimum_learning_rate": 0.0001,
     "weight_decay": 0.0001,
