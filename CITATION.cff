@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as described below."
+title: "Distributed Lag Neural Additive Models"
+type: software
+authors:
+
+* family-names: "Helmersson"
+  given-names: "Calle"
+* family-names: "Pandey"
+  given-names: "Shivang"
+  version: "1.0.0"
+  repository-code: "https://github.com/shivangpandey31/DLNAM"
