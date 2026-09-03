@@ -659,7 +659,7 @@ def plot_comparison(payload: dict) -> list[Path]:
 
     with plt.rc_context(PLOT_RC):
         fig = plt.figure(figsize=(15.2, 8.92))
-        left, right, gap = 0.0789, 0.9912, 0.0260
+        left, right, gap = 0.045, 0.9912, 0.0260
         width = (right - left - gap * (len(EXPOSURES) - 1)) / len(EXPOSURES)
         curve_y, curve_h = 0.7321, 0.1799
         dlnam_y, surf_h = 0.4172, 0.3037
@@ -727,42 +727,8 @@ def plot_comparison(payload: dict) -> list[Path]:
                     show_zlabel=i == 0,
                 )
 
-        curve_axes[0].text(
-            -0.28,
-            0.5,
-            "Comparison",
-            transform=curve_axes[0].transAxes,
-            rotation=90,
-            ha="center",
-            va="center",
-            fontsize=9,
-            weight="bold",
-        )
-        surface_axes["DLNAM"][0].text2D(
-            -0.28,
-            0.55,
-            "DLNAM",
-            transform=surface_axes["DLNAM"][0].transAxes,
-            rotation=90,
-            ha="center",
-            va="center",
-            fontsize=9,
-            weight="bold",
-        )
-        surface_axes["DLNM"][0].text2D(
-            -0.28,
-            0.55,
-            "DLNM",
-            transform=surface_axes["DLNM"][0].transAxes,
-            rotation=90,
-            ha="center",
-            va="center",
-            fontsize=9,
-            weight="bold",
-        )
-
         fig.suptitle("DHS/MIS Malaria: Model Comparison",
-                     fontsize=13, weight="bold", x=0.5351, y=0.9868)
+                     fontsize=13, weight="bold", x=0.5181, y=0.9868)
 
         line_d = Line2D([0], [0], color=MODEL_COLOURS["DLNAM"], lw=1.25, label="DLNAM")
         line_r = Line2D([0], [0], color=MODEL_COLOURS["DLNM"], lw=1.25, label="DLNM")
@@ -772,7 +738,7 @@ def plot_comparison(payload: dict) -> list[Path]:
             handles=[line_d, line_r, band_h],
             loc="lower center",
             ncol=3,
-            bbox_to_anchor=(0.5351, 0.1137),
+            bbox_to_anchor=(0.5181, 0.1137),
             fontsize=7.8,
             columnspacing=1.15,
             handletextpad=0.5,
